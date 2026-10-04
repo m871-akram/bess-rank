@@ -1,0 +1,20 @@
+# Data is never committed (SMARD licensing, CLAUDE.md rule 9)
+data/
+*.parquet
+
+# Local environments and secrets
+.venv/
+.env
+
+# MLflow local runs
+mlruns/
+
+# Python and OS clutter
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.DS_Store
+
+# The pre-registration lock must stay tracked
+!PREREGISTRATION.lock
