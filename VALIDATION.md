@@ -21,11 +21,13 @@ raw numbers).
     (+1.16 to +2.73 €/day; degradation 0 and 20 €/MWh, 1 h and 4 h batteries);
   - without TSO generation forecasts both XGBoost strategies lose 5–6% of profit, and rank − reg
     grows to +4.38 €/day (2.20 to 6.51);
-  - with the validation tree counts fixed at every refit, rank − reg is +1.30 €/day (0.36 to
-    2.36): about 0.5 €/day of the official effect came from XGB-reg's unstable early stopping;
+  - with both models' validation tree counts fixed at every refit, rank − reg is +1.30 €/day
+    (0.36 to 2.36): about 0.5 €/day of the official effect came from early stopping at the
+    refits, mostly XGB-reg's (fixing the trees raises S-xgb-reg by 0.69 €/day, S-xgb-rank by
+    0.15);
   - order is two-thirds of S-xgb-reg's gap to perfect foresight (7.6 of 11.2 €/day). The BiLSTM
     price model already orders the hours almost as well as XGB-rank, which is why the LSTM ranker
-    adds nothing; its Jul–Sep 2026 loss is one day (2026-09-14, −108 € of −134 €);
+    adds nothing; its Jul–Sep 2026 loss is mostly one day (2026-09-14, −108 € of −134 €);
   - stretch: CVaR-constrained schedules from conformal scenarios lower both the mean profit
     (−5% to −19%) and the realized ES on the test year; only the drawdown improves.
 
@@ -200,13 +202,16 @@ and XGB-rank, averaged; bins = training deciles; < 0.1 stable, 0.1–0.25 modera
 - The price-level features shift strongly (PSI 1.05–1.72). The training period runs from the
   low prices of 2019–2020 through the 2022 crisis; the shift was already there in the validation
   year (0.93–1.83), so model selection saw it. Quarterly refits carry the newest year into training.
-- The residual-load level features drift moderately and more than in validation (0.15–0.17
-  against 0.06–0.07), consistent with more wind and PV.
-- The within-day order features (residual-load rank, lagged rank, 28-day profile) are stable
-  (0.00–0.07). These are the ranker's main inputs: by mean |SHAP| on the test year, 62% of XGB-rank's
-  attribution goes to the within-day residual-load deviation and rank, while XGB-reg's top three
-  are level features: the residual-load forecast (18%), the price on D-1 (13%) and on D-7 (11%)
-  (`results/explore/shap_top10.csv`).
+- The residual-load features drift moderately and more than in validation (0.15–0.17 against
+  0.06–0.07), consistent with more wind and PV. This includes the within-day residual-load
+  deviation (0.17), the ranker's top feature.
+- The within-day rank and profile features (residual-load rank, lagged rank, 28-day profile)
+  are stable (0.00–0.07).
+- By mean |SHAP| on the test year, 62% of XGB-rank's attribution goes to the within-day
+  residual-load deviation (PSI 0.17) and rank (0.00). XGB-reg's top three are level features:
+  the residual-load forecast (18%, PSI 0.15), the price on D-1 (13%, PSI 1.05) and on D-7 (11%,
+  PSI 1.06) (`results/explore/shap_top10.csv`). The ranker's inputs drifted much less than the
+  price model's.
 
 **Performance by quarter** (`results/explore/metrics_by_quarter.csv`, every metric). Capture of
 the model strategies rises from 88–90% in Oct–Dec 2025 to 97–99% in Jul–Sep 2026, and RMSE rises
@@ -258,7 +263,7 @@ a value part (the price model's values in the true order) and the rest (interact
   0.34 €/day of order, and the interaction takes it back: hence H3 inconclusive.
 - **LSTM, Jul–Sep 2026 (−1.45 €/day).** With true prices the ranker's order is *better* than
   LSTM-reg's in this quarter (order-only gap 3.17 against 3.61 €/day); the loss is in the
-  interaction (+1.42 against −0.48), and it is one day. On 2026-09-14 (perfect foresight 741 €)
+  interaction (+1.42 against −0.48), and most of it is one day. On 2026-09-14 (perfect foresight 741 €)
   S-lstm-rank earns 626 € against S-lstm-reg's 734 €: −108 € of the quarter's −134 €. The ranker
   placed 07:00 third-dearest, above 18:00 (true third and fourth were 18:00 at 400 € and 07:00 at
   317 €), so the reassignment gave 07:00 LSTM-reg's third-highest value, 319 €. Within its one
@@ -288,9 +293,10 @@ The XGBoost pair was refitted on the test year with the validation tree counts a
 With fixed trees XGB-reg is better (RMSE 29.20 against 30.26 €/MWh, +251 €/MW/year) and XGB-rank
 nearly unchanged (+56), so the rank − reg difference shrinks by 0.53 €/day; its CI stays above 0
 and it stays positive in every quarter. The quarters with few XGB-reg trees (Jan–Jun 2026) do not
-carry the official effect: their differences shrink by 0.66 and 0.41 €/day, about as much as the
+carry the official effect: their differences shrink by 0.66 and 0.40 €/day, about as much as the
 quarters with many trees (0.28 and 0.80). Part of the official H1 effect (about 0.5 €/day) comes
-from early-stopping noise in the price model's refits; most of it does not. The official verdict
+from early-stopping noise at the refits, mostly in the price model (fixing the trees raises
+S-xgb-reg by 0.69 €/day and S-xgb-rank by 0.15); most of it does not. The official verdict
 stands as pre-registered; this is a check, not a re-test.
 
 ### 9.4 Conformal quantiles and the CVaR frontier (stretch)
@@ -331,13 +337,14 @@ Mean |SHAP| on the test year of the training-period models (`results/explore/sha
 XGB-rank draws 62% of its attribution from the within-day residual-load deviation and rank, and
 another 17% from the lagged rank and 28-day profile features. XGB-reg's top three are level
 features: the residual-load forecast (18%) and the prices on D-1 (13%) and D-7 (11%). The ranker
-leans on the features whose distribution stayed stable (section 8).
+leans on within-day features, which drifted much less than the price model's level features
+(section 8).
 
 ## 10. Findings and recommendations
 
 | # | Severity | Finding | Recommendation |
 |---|---|---|---|
-| 1 | Medium | XGB-reg's early stopping is unstable across refits (39 to 858 trees). With the validation tree counts fixed, XGB-reg improves (RMSE −1.06 €/MWh) and H1's statistic falls from +1.83 to +1.30 €/day (CI still above 0). | Report the tree-count check next to H1. In future studies, fix tree counts or average several early-stopping windows, and monitor the count at each refit. |
+| 1 | Medium | XGB-reg's early stopping is unstable across refits (39 to 858 trees). With both models' validation tree counts fixed, XGB-reg improves (RMSE −1.06 €/MWh, +0.69 €/day; XGB-rank +0.15 €/day) and H1's statistic falls from +1.83 to +1.30 €/day (CI still above 0). | Report the tree-count check next to H1. In future studies, fix tree counts or average several early-stopping windows, and monitor the count at each refit. |
 | 2 | Medium | The results rely on TSO wind and PV forecasts that are published after the auction; without them profits fall by 5–6%. | State it next to every profit number in the README. Before any operational use, replace them with forecasts available at 11:00 on D-1. |
 | 3 | Low | The "-rank" reassignment is sensitive when a near-tie in the ranker's order meets a large gap in the price model's values (2026-09-14: −108 €, most of the LSTM's Jul–Sep loss). | Report per-day contributions with every pair difference; a hybrid rule (keep the price model's order unless the ranker is confident) is a future study, not a change to this one. |
 | 4 | Low | The S3 test forecasts were kept only in that session's VM and had to be regenerated in S4 (reproduced exactly: 48/48 fits, profits within 2.3e-13 €). | Done in S4: the forecasts are on the Databricks volume. Future test-type runs should upload their forecasts automatically. |

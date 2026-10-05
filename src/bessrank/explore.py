@@ -522,7 +522,7 @@ def fig_cumulative_profit():
     plt.close(fig)
 
 
-def fig_accuracy_vs_value(fits, corr):
+def fig_accuracy_vs_value(fits, corr, out_path=None):
     """Validation profit against RMSE and against within-day Spearman rho, every single-seed
     fit of the S2 search. Colour = family, marker = objective."""
     plt, fig, axes = _figure(2, size=(11, 4.4), sharey=True)
@@ -543,11 +543,11 @@ def fig_accuracy_vs_value(fits, corr):
     fig.text(0.01, 0.01, "Validation year 2024-10-01 to 2025-09-30, every configuration and seed of the "
              "S2 search. Data: Bundesnetzagentur | SMARD.de", color=INK_2, fontsize=7.5)
     fig.tight_layout(rect=(0, 0.04, 1, 1))
-    fig.savefig(EXPLORE_DIR / "fig_accuracy_vs_value.png", dpi=150, facecolor=SURFACE)
+    fig.savefig(out_path or EXPLORE_DIR / "fig_accuracy_vs_value.png", dpi=150, facecolor=SURFACE)
     plt.close(fig)
 
 
-def fig_example_day(vectors, daily):
+def fig_example_day(vectors, daily, out_path=None):
     """The test day where S-xgb-rank and S-xgb-reg differ most in profit: the actual prices,
     both price vectors, and both schedules (net energy sold per hour)."""
     diff = daily["S-xgb-rank"] - daily["S-xgb-reg"]
@@ -579,10 +579,57 @@ def fig_example_day(vectors, daily):
     fig.text(0.01, 0.01, "Simulated 1 MW / 2 MWh battery, day-ahead market only, price-taker. "
              "Data: Bundesnetzagentur | SMARD.de", color=INK_2, fontsize=7.5)
     fig.tight_layout(rect=(0, 0.03, 1, 1))
-    fig.savefig(EXPLORE_DIR / "fig_example_day.png", dpi=150, facecolor=SURFACE)
+    fig.savefig(out_path or EXPLORE_DIR / "fig_example_day.png", dpi=150, facecolor=SURFACE)
     plt.close(fig)
     return {"day": str(day), "xgb_rank_eur": float(daily.loc[i, "S-xgb-rank"]),
             "xgb_reg_eur": float(daily.loc[i, "S-xgb-reg"]), "perfect_eur": float(daily.loc[i, "S-perfect"])}
+
+
+FIGURES_DIR = config.RESULTS_DIR / "figures"  # the three README figures
+
+
+def fig_hero(out_path):
+    """README Fig. 1: cumulative rank - reg profit difference over the test year, both families,
+    from the official daily profits. Differences, not levels: at this scale the level lines of
+    the four model strategies lie on top of each other."""
+    import matplotlib.dates as mdates
+    daily = pd.read_csv(config.RESULTS_DIR / "test_daily_profit.csv", parse_dates=["delivery_day"])
+    plt, fig, ax = _figure(size=(9.5, 4.8))
+    last = daily["delivery_day"].iloc[-1]
+    for (a, b), color, name in zip(config.PAIRS, [BLUE, ORANGE], ["XGBoost", "BiLSTM"]):
+        cum = (daily[a] - daily[b]).cumsum()
+        ax.plot(daily["delivery_day"], cum, color=color, linewidth=2.2)
+        ax.annotate(f"{name}\n{cum.iloc[-1]:+,.0f} EUR/MW", (last, cum.iloc[-1]), xytext=(6, 0),
+                    textcoords="offset points", color=INK, fontsize=9, va="center")
+    ax.axhline(0, color=INK_2, linewidth=0.8)
+    for q in backtest.TEST_QUARTERS[1:]:
+        ax.axvline(pd.Timestamp(q), color=GRID, linewidth=1.2, zorder=0)
+    ax.set_xlim(right=last + pd.Timedelta(days=75))  # room for the end labels
+    ax.set_xticks([t for t in ax.get_xticks() if t <= mdates.date2num(last)])
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %y"))
+    ax.set_ylabel("Cumulative profit, rank minus price model (EUR per MW)", color=INK_2, fontsize=9)
+    ax.set_title("Training to rank the hours vs training to predict prices: cumulative profit difference",
+                 color=INK, fontsize=10.5, loc="left")
+    fig.text(0.01, 0.01, "Test year 2025-10-01 to 2026-09-30, pre-registered and run once. Simulated 1 MW / 2 MWh "
+             "battery, German day-ahead market, price-taker.\nData: Bundesnetzagentur | SMARD.de",
+             color=INK_2, fontsize=7.5)
+    fig.tight_layout(rect=(0, 0.06, 1, 1))
+    fig.savefig(out_path, dpi=150, facecolor=SURFACE)
+    plt.close(fig)
+
+
+def readme_figures(log=print):
+    """The three README figures in results/figures/ (python -m bessrank.run report)."""
+    FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+    fig_hero(FIGURES_DIR / "fig1_cumulative_difference.png")
+    hourly = data.load_hourly(include_test=True)
+    vectors = test_vectors(hourly, load_forecasts())
+    daily = pd.read_csv(config.RESULTS_DIR / "test_daily_profit.csv")
+    daily["delivery_day"] = pd.to_datetime(daily["delivery_day"]).dt.date
+    fig_example_day(vectors, daily, FIGURES_DIR / "fig2_example_day.png")
+    fits, corr = accuracy_vs_value()
+    fig_accuracy_vs_value(fits, corr, FIGURES_DIR / "fig3_accuracy_vs_value.png")
+    log(f"README figures written to {FIGURES_DIR.relative_to(config.ROOT)}/")
 
 
 # --- Driver -------------------------------------------------------------------------------------

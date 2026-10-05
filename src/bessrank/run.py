@@ -1,4 +1,4 @@
-"""Command line entry point: python -m bessrank.run {data,qa,smoke,features,validate,test,explore,report}."""
+"""Command line entry point: python -m bessrank.run {data,qa,smoke,features,tune,validate,test,explore,report,pipeline}."""
 import argparse
 import json
 import platform
@@ -6,6 +6,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from importlib import metadata
+from pathlib import Path
 
 import pandas as pd
 
@@ -119,6 +120,37 @@ def cmd_tune(args):
     update_provenance(f"tune_{args.model}", {"fits": int((table["seed"] != "avg").sum()),
                                              "selected_config": selected["config"],
                                              "threads": models.N_THREADS})
+
+
+def upload_run_outputs(run_type, files, commit=None):
+    """Copy a run's forecasts and results/provenance.json to the Databricks volume, in
+    runs/<run_type>-<commit>/, and check each file's size there.
+
+    Data files stay out of git (CLAUDE.md rule 9), so the volume is where a later session finds
+    them (S4 had to refit the S3 forecasts). A failed upload never stops the run: the local
+    files are kept and a warning says which uploads failed. Returns True if every file is there.
+    """
+    from bessrank import databricks
+    commit = commit or git_commit()
+    dirty = "-dirty" if commit.endswith("-dirty") else ""
+    folder = f"runs/{run_type}-{commit.removesuffix('-dirty')[:12]}{dirty}"
+    paths = [Path(f) for f in files if Path(f).exists()] + [config.PROVENANCE_JSON]
+    failed = []
+    for path in paths:
+        remote = f"{folder}/{path.name}"
+        try:
+            ok = databricks.upload_file(path, remote) and databricks.remote_file_size(remote) == path.stat().st_size
+        except Exception as exc:  # no DATABRICKS_HOST, network or authentication error
+            log(f"upload of {path.name} raised {type(exc).__name__}")
+            ok = False
+        if not ok:
+            failed.append(path.name)
+    if failed:
+        log(f"WARNING: upload to the Databricks volume failed for {', '.join(failed)}. The run's local "
+            f"files are kept (data/predictions/, results/); upload them before this VM is reclaimed.")
+    else:
+        log(f"Uploaded {len(paths)} files to {config.DBX_VOLUME_PATH}/{folder}/ (sizes checked).")
+    return not failed
 
 
 # Display labels: VaR and ES are profit levels, negative = loss (Akram, 2026-10-05).
@@ -304,6 +336,7 @@ def cmd_test(args):
                                "frozen_files_changed_since_preregistration": changed,
                                "runtime_seconds": {k: round(v, 1) for k, v in out["timings"].items()}})
     write_test_summary(prefix, out, quarter_list)
+    upload_run_outputs(prefix, [config.PREDICTIONS_DIR / f"{prefix}_forecasts.parquet"])
     show = out["hypotheses"].set_index("hypothesis")[["estimate", "ci95_low", "ci95_high", "margin", "verdict"]]
     print(show.round(3).to_string())  # rounded for display only
     log(f"done in {out['timings']['total_s'] / 60:.1f} min")
@@ -384,6 +417,50 @@ def cmd_explore(args):
              "analyses": explore.analyses, "conformal-cvar": explore.conformal_cvar}
     steps[args.step](log=log)
     update_provenance(f"explore_{args.step}", {"label": "exploratory (PLAN.md §8)"})
+    forecasts = {"forecasts": [explore.FORECASTS_PARQUET], "xgb-variants": [explore.VARIANTS_PARQUET],
+                 "conformal-cvar": [explore.QUANTILES_PARQUET], "analyses": []}
+    upload_run_outputs(f"explore-{args.step}", forecasts[args.step])
+
+
+def cmd_report(args):
+    """The three README figures. The example day plots test-year prices, so the lock must be open."""
+    from bessrank import explore
+    config.require_test_unlocked()
+    explore.readme_figures(log=log)
+
+
+def cmd_pipeline(args):
+    """The official XGBoost test pipeline on Databricks serverless (PLAN.md §9): bundle the
+    committed code, upload it, import the notebook, create or update the job
+    `bess-rank-pipeline`, run it once and save its summary to results/databricks_pipeline.json."""
+    import tempfile
+    from bessrank import databricks
+    commit = git_commit()
+    if commit.endswith("-dirty"):
+        sys.exit("Commit and push first: every gold table and MLflow run records the commit.")
+    user = databricks.current_user()
+    with tempfile.TemporaryDirectory() as tmp:
+        bundle_local = Path(tmp) / f"bess-rank-{commit[:12]}.tar"
+        databricks.build_bundle(commit, bundle_local)
+        bundle = f"pipeline/{bundle_local.name}"
+        if not databricks.upload_file(bundle_local, bundle):
+            sys.exit("Upload of the code bundle failed.")
+    notebook_path = f"/Users/{user}/bess-rank-notebooks/01_pipeline"
+    databricks.import_notebook(databricks.PIPELINE_NOTEBOOK, notebook_path)
+    job_id = databricks.ensure_job(databricks.job_settings(notebook_path, bundle))
+    run_id = databricks.run_job_now(job_id)
+    log(f"job {databricks.JOB_NAME} ({job_id}): run {run_id} started, bundle {bundle}")
+    result, detail = databricks.wait_for_run(run_id, timeout_s=5400, poll_s=30)
+    log(f"run {run_id}: {result}")
+    summary = databricks.read_text(f"runs/databricks-{commit[:12]}/summary.json")
+    out = {"job_name": databricks.JOB_NAME, "job_id": job_id, "run_id": run_id, "result": result,
+           "bundle": bundle, "summary": json.loads(summary) if summary else None,
+           "error": None if result == "SUCCESS" else str(detail)[:2000]}
+    (config.RESULTS_DIR / "databricks_pipeline.json").write_text(json.dumps(out, indent=2, default=str) + "\n")
+    update_provenance("databricks_pipeline", {"job": databricks.JOB_NAME, "run_id": run_id, "result": result,
+                                              "pipeline_commit": commit})
+    if result != "SUCCESS":
+        sys.exit(f"Databricks run failed: {str(detail)[:500]}")
 
 
 def cmd_smoke(args):
@@ -404,6 +481,8 @@ def main():
     p.set_defaults(func=cmd_data)
     sub.add_parser("qa", help="write results/qa_data.md").set_defaults(func=cmd_qa)
     sub.add_parser("smoke", help="Databricks smoke test").set_defaults(func=cmd_smoke)
+    sub.add_parser("pipeline", help="official XGBoost test pipeline as the Databricks job (PLAN.md §9)"
+                   ).set_defaults(func=cmd_pipeline)
     sub.add_parser("features", help="build the feature table").set_defaults(func=cmd_features)
     p = sub.add_parser("tune", help="random search of one model on the validation year")
     p.add_argument("model", choices=["xgb-reg", "xgb-rank", "lstm-reg", "lstm-rank"])
@@ -418,7 +497,7 @@ def main():
     p = sub.add_parser("explore", help="exploratory analyses after the test run (PLAN.md §8)")
     p.add_argument("step", choices=["forecasts", "xgb-variants", "analyses", "conformal-cvar"])
     p.set_defaults(func=cmd_explore)
-    sub.add_parser("report").set_defaults(func=not_yet)
+    sub.add_parser("report", help="the README figures (results/figures/)").set_defaults(func=cmd_report)
     args = parser.parse_args()
     args.func(args)
 

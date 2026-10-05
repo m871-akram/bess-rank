@@ -1,0 +1,77 @@
+{
+  "job_name": "bess-rank-pipeline",
+  "job_id": 198262942876025,
+  "run_id": 967734030312010,
+  "result": "SUCCESS",
+  "bundle": "pipeline/bess-rank-4cd8d8a3a45c.tar",
+  "summary": {
+    "commit": "4cd8d8a3a45c3ef2269f12bc04d08909b574ddfb",
+    "h1_mean_daily_diff_eur": 1.8280097696703688,
+    "h1_ci95": [
+      0.7794664098499758,
+      2.839666514505663
+    ],
+    "h1_verdict_rule": "supported",
+    "parity": {
+      "days_compared": 365,
+      "profit": {
+        "S-perfect": {
+          "max_abs_diff_eur": 2.2737367544323206e-13,
+          "max_rel_diff": 2.57406378053651e-15,
+          "days_over_1e-6": 0
+        },
+        "S-naive-1d": {
+          "max_abs_diff_eur": 2.2737367544323206e-13,
+          "max_rel_diff": 1.4210854715202004e-14,
+          "days_over_1e-6": 0
+        },
+        "S-naive-7d": {
+          "max_abs_diff_eur": 1.9184653865522705e-13,
+          "max_rel_diff": 1.855448708785788e-14,
+          "days_over_1e-6": 0
+        },
+        "S-xgb-reg": {
+          "max_abs_diff_eur": 1.7053025658242404e-13,
+          "max_rel_diff": 2.901105908386632e-15,
+          "days_over_1e-6": 0
+        },
+        "S-xgb-rank": {
+          "max_abs_diff_eur": 2.2737367544323206e-13,
+          "max_rel_diff": 1.4141465776162931e-14,
+          "days_over_1e-6": 0
+        }
+      },
+      "forecasts": {
+        "xgb-reg": 0.0,
+        "xgb-rank": 0.0,
+        "xgb-reg:s0": 0.0,
+        "xgb-reg:s1": 0.0,
+        "xgb-reg:s2": 0.0,
+        "xgb-rank:s0": 0.0,
+        "xgb-rank:s1": 0.0,
+        "xgb-rank:s2": 0.0
+      },
+      "all_within_1e-6": true
+    },
+    "profit_eur_per_mw_year": {
+      "S-perfect": 73181.08845356976,
+      "S-naive-1d": 60390.07837039568,
+      "S-naive-7d": 57935.578967335816,
+      "S-xgb-reg": 69106.85183222649,
+      "S-xgb-rank": 69774.07539815616
+    },
+    "timings_s": {
+      "refits_s": 272.7987759113312,
+      "solve_s": 43.297736167907715,
+      "tables_s": 34.04842019081116,
+      "total_s": 352.6860601902008
+    },
+    "tables": {
+      "gold_features": "workspace.bess.gold_features",
+      "gold_predictions": "workspace.bess.gold_predictions",
+      "gold_schedules": "workspace.bess.gold_schedules",
+      "gold_daily_profit": "workspace.bess.gold_daily_profit"
+    }
+  },
+  "error": null
+}
