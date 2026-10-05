@@ -1,0 +1,14 @@
+{
+  "what": "test-year forecasts regenerated with the frozen backtest code; compared with results/test_daily_profit.csv and results/test_refits.csv",
+  "fits_with_same_n_iter": 48,
+  "fits": 48,
+  "max_abs_daily_profit_diff_eur": {
+    "S-perfect": 5.684341886080802e-14,
+    "S-naive-1d": 2.2737367544323206e-13,
+    "S-naive-7d": 1.1368683772161603e-13,
+    "S-xgb-reg": 5.684341886080802e-14,
+    "S-xgb-rank": 2.2737367544323206e-13,
+    "S-lstm-reg": 5.684341886080802e-14,
+    "S-lstm-rank": 2.2737367544323206e-13
+  }
+}

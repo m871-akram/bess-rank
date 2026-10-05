@@ -156,3 +156,74 @@ def settle(schedule, actual_prices, battery=DEFAULT_BATTERY):
     p = np.asarray(actual_prices, dtype=float)
     return float(p @ (schedule.discharge - schedule.charge)
                  - battery.degradation_eur_per_mwh * schedule.discharge.sum())
+
+
+# --- Risk-aware schedule (PLAN.md §8 stretch, exploratory) -----------------------------------
+def solve_day_cvar_ortools(scenarios, lam, battery=DEFAULT_BATTERY, beta=0.95, backend="SCIP"):
+    """One day's schedule from price scenarios (S x n, EUR/MWh): maximise the mean scenario
+    profit minus lam x CVaR_beta of the loss (loss = -profit), with the Rockafellar-Uryasev
+    formulation: CVaR = eta + sum_s z_s / ((1 - beta) S), z_s >= loss_s - eta, z_s >= 0.
+
+    Same battery constraints as the daily program above. lam = 0 is the deterministic program
+    on the mean scenario price. Returns (Schedule, objective in EUR).
+    """
+    from ortools.linear_solver import pywraplp
+
+    P = np.asarray(scenarios, dtype=float)
+    S, n = P.shape
+    b = battery
+    solver = pywraplp.Solver.CreateSolver(backend)
+    solver.SuppressOutput()
+    if backend == "HIGHS":
+        # OR-Tools does not pass RELATIVE_MIP_GAP on to HiGHS, which then stops inside its
+        # default 1e-4 gap (S4: 1.8e-5 relative below SCIP on a test day). HiGHS's own option
+        # applies it, although OR-Tools returns False for the call.
+        solver.SetSolverSpecificParametersAsString("mip_rel_gap=0")
+    c = [solver.NumVar(0, b.power_mw, f"c{h}") for h in range(n)]
+    d = [solver.NumVar(0, b.power_mw, f"d{h}") for h in range(n)]
+    u = [solver.BoolVar(f"u{h}") for h in range(n)]
+    soc = [solver.NumVar(0, b.capacity_mwh, f"soc{h + 1}") for h in range(n)]
+    eta = solver.NumVar(-solver.infinity(), solver.infinity(), "eta")
+    z = [solver.NumVar(0, solver.infinity(), f"z{s}") for s in range(S)]
+    for h in range(n):
+        solver.Add(c[h] <= b.power_mw * u[h])
+        solver.Add(d[h] <= b.power_mw * (1 - u[h]))
+        previous = b.soc_start_mwh if h == 0 else soc[h - 1]
+        solver.Add(soc[h] == previous + b.eta_charge * c[h] - d[h] * (1.0 / b.eta_discharge))
+    solver.Add(soc[n - 1] == b.soc_start_mwh)
+    solver.Add(solver.Sum(d) <= b.max_discharge_mwh)
+    for s in range(S):
+        # z_s >= loss_s - eta, with loss_s = -(sum_h p_sh (d_h - c_h) - DEG sum_h d_h)
+        ct = solver.Constraint(0.0, solver.infinity())
+        ct.SetCoefficient(z[s], 1.0)
+        ct.SetCoefficient(eta, 1.0)
+        for h in range(n):
+            ct.SetCoefficient(d[h], float(P[s, h]) - b.degradation_eur_per_mwh)
+            ct.SetCoefficient(c[h], -float(P[s, h]))
+    mean_p = P.mean(axis=0)
+    objective = solver.Objective()
+    for h in range(n):
+        objective.SetCoefficient(d[h], float(mean_p[h]) - b.degradation_eur_per_mwh)
+        objective.SetCoefficient(c[h], -float(mean_p[h]))
+    objective.SetCoefficient(eta, -lam)
+    for s in range(S):
+        objective.SetCoefficient(z[s], -lam / ((1 - beta) * S))
+    objective.SetMaximization()
+    params = pywraplp.MPSolverParameters()
+    params.SetDoubleParam(params.RELATIVE_MIP_GAP, 0.0)
+    status = solver.Solve(params)
+    if status != pywraplp.Solver.OPTIMAL:
+        raise RuntimeError(f"{backend} status {status}")
+    schedule = Schedule(charge=np.array([v.solution_value() for v in c]),
+                        discharge=np.array([v.solution_value() for v in d]),
+                        soc=np.array([v.solution_value() for v in soc]), objective=objective.Value())
+    return schedule, objective.Value()
+
+
+def solve_day_cvar(scenarios, lam, battery=DEFAULT_BATTERY, beta=0.95):
+    """CVaR program with SCIP, re-solved with HiGHS; stops the run if the objectives disagree."""
+    schedule, obj = solve_day_cvar_ortools(scenarios, lam, battery, beta, "SCIP")
+    _, other = solve_day_cvar_ortools(scenarios, lam, battery, beta, "HIGHS")
+    if not objectives_agree(obj, other):
+        raise SolverMismatchError(f"CVaR lam={lam}: SCIP {obj!r} vs HiGHS {other!r} EUR")
+    return schedule

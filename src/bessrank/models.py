@@ -206,3 +206,25 @@ def search(kind, feats, configs, fit, n_finalists, seeds=config.SEEDS, log=print
                                                               & (table["seed"] != "avg"), "n_iter"]]}
     log(f"{kind} selected config {chosen}: {metric} {best[metric]:.4f} (3-seed average)")
     return table, preds, selected
+
+
+# --- Quantile model (PLAN.md §4, §8 stretch, exploratory) -----------------------------------
+def fit_predict_quantiles(params, train, predict_frames, seed=0, n_threads=4):
+    """XGB-quantile: one multi-quantile booster (`reg:quantileerror`, the 19 levels of
+    risk.QUANTILE_LEVELS) with XGB-reg's hyperparameters. Fit procedure of §7: early stopping on
+    the last 3 months of the window (mean pinball loss), then a refit on the whole window.
+
+    Returns (number of trees, [array (rows, 19) for each frame in predict_frames]).
+    """
+    from bessrank.risk import QUANTILE_LEVELS
+    p = {**FIXED_PARAMS, **params, "objective": "reg:quantileerror", "quantile_alpha": QUANTILE_LEVELS,
+         "eval_metric": "quantile", "seed": seed, "nthread": n_threads}
+    inner, es = split_early_stopping(train)
+
+    def dm(frame):
+        return xgb.DMatrix(frame[features.FEATURE_COLUMNS], label=frame["price"].to_numpy())
+    booster = xgb.train(p, dm(inner), MAX_TREES, evals=[(dm(es), "es")],
+                        early_stopping_rounds=EARLY_STOPPING_ROUNDS, verbose_eval=False)
+    n_trees = booster.best_iteration + 1
+    final = xgb.train(p, dm(train), n_trees)
+    return n_trees, [final.predict(xgb.DMatrix(f[features.FEATURE_COLUMNS])) for f in predict_frames]

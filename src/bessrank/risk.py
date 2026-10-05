@@ -1,4 +1,4 @@
-"""Risk metrics of daily profit (PLAN.md §5). PSI and conformal calibration come in S4.
+"""Risk metrics of daily profit (PLAN.md §5); PSI and conformal calibration (§8, S4).
 
 All inputs are daily profits in EUR (per MW, the battery is 1 MW). VaR and ES are reported
 as profit levels, not as losses: a negative value is a loss. Column names and table headers
@@ -41,3 +41,73 @@ def risk_metrics(daily_profit, alpha=ALPHA):
         "max_drawdown_eur": max_drawdown(daily_profit),
         "losing_day_share": losing_day_share(daily_profit),
     }
+
+
+# --- Stability and conformal calibration (PLAN.md §8, exploratory) ------------------------
+def psi(expected, actual, bins=10):
+    """Population Stability Index of `actual` (test) against `expected` (train).
+
+    Bins are the deciles of `expected` (merged where values repeat), plus a bin for missing
+    values; empty bins get a floor of 1e-4 so the log stays finite. Usual reading: < 0.1
+    stable, 0.1-0.25 moderate shift, > 0.25 large shift.
+    """
+    expected, actual = np.asarray(expected, dtype=float), np.asarray(actual, dtype=float)
+    edges = np.unique(np.nanquantile(expected, np.linspace(0, 1, bins + 1)))[1:-1]
+
+    def shares(x):
+        idx = np.where(np.isnan(x), len(edges) + 1, np.searchsorted(edges, x, side="right"))
+        return np.maximum(np.bincount(idx, minlength=len(edges) + 2) / len(x), 1e-4)
+    p, q = shares(expected), shares(actual)
+    return float(np.sum((q - p) * np.log(q / p)))
+
+
+QUANTILE_LEVELS = np.round(np.arange(0.05, 0.951, 0.05), 2)  # 19 levels (PLAN.md §4)
+
+
+def cqr_corrections(q_cal, y_cal, levels=QUANTILE_LEVELS):
+    """Conformalized quantile regression (Romano, Patterson & Candes 2019) on a calibration set.
+
+    For each symmetric pair of levels (a, 1 - a) the conformity score of a calibration hour is
+    max(q_a - y, y - q_{1-a}); the correction is its ceil((n + 1)(1 - 2a)) / n empirical
+    quantile, which widens (or narrows, if negative) the interval so that it covers about
+    1 - 2a of the hours. Returns {a: correction}. The median gets no correction.
+    """
+    q_cal, y_cal = np.asarray(q_cal, dtype=float), np.asarray(y_cal, dtype=float)
+    n, out = len(y_cal), {}
+    for i, a in enumerate(levels):
+        j = len(levels) - 1 - i
+        if a >= 0.5:
+            break
+        scores = np.maximum(q_cal[:, i] - y_cal, y_cal - q_cal[:, j])
+        level = min(1.0, np.ceil((n + 1) * (1 - 2 * a)) / n)
+        out[float(a)] = float(np.quantile(scores, level, method="higher"))
+    return out
+
+
+def apply_cqr(q, corrections, levels=QUANTILE_LEVELS):
+    """Move each pair (a, 1 - a) apart by its correction; sort each row so quantiles never cross."""
+    q = np.array(q, dtype=float, copy=True)
+    for i, a in enumerate(levels):
+        if float(a) in corrections:
+            j = len(levels) - 1 - i
+            q[:, i] -= corrections[float(a)]
+            q[:, j] += corrections[float(a)]
+    return np.sort(q, axis=1)
+
+
+def pinball_loss(q, y, levels=QUANTILE_LEVELS):
+    """Mean pinball (quantile) loss over every hour and level (EUR/MWh)."""
+    diff = np.asarray(y, dtype=float)[:, None] - np.asarray(q, dtype=float)
+    return float(np.mean(np.maximum(levels * diff, (levels - 1) * diff)))
+
+
+def interval_coverage(q, y, levels=QUANTILE_LEVELS):
+    """Share of hours inside each central interval [q_a, q_{1-a}]: {nominal coverage: share}."""
+    y = np.asarray(y, dtype=float)
+    out = {}
+    for i, a in enumerate(levels):
+        if a >= 0.5:
+            break
+        j = len(levels) - 1 - i
+        out[round(1 - 2 * float(a), 2)] = float(np.mean((q[:, i] <= y) & (y <= q[:, j])))
+    return out
