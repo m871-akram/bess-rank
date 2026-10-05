@@ -3,7 +3,7 @@
 All inputs are daily profits in EUR (per MW, the battery is 1 MW). VaR and ES are reported
 as profit levels, not as losses: a negative value is a loss. Column names and table headers
 say so ("P5 of daily profit", "mean of the worst 5% of days") so a risk reader does not
-misread the sign (Akram, 2026-10-05).
+misread the sign (decided on 2026-10-05).
 """
 import numpy as np
 

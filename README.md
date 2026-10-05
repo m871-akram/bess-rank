@@ -231,6 +231,8 @@ Edition).
 ## Repository
 
 - [`PLAN.md`](PLAN.md): design, pre-registration (§6) and lab notebook (§12).
+- [`RULES.md`](RULES.md): the study's hard rules (test lock, no look-ahead, controlled
+  comparisons, sanity assertions, reproducibility).
 - [`VALIDATION.md`](VALIDATION.md): model validation report and every exploratory analysis.
 - [`src/bessrank/`](src/bessrank/): one module per stage; [`tests/`](tests/): the test suite.
 - [`results/`](results/): committed results (no SMARD data); [`results/explore/`](results/explore/)
@@ -240,7 +242,6 @@ Edition).
 
 Data: Bundesnetzagentur | SMARD.de
 
-Implemented with Claude Code under the rules in [CLAUDE.md](CLAUDE.md). Question, design,
-pre-registration and decisions: Akram M. Lrhorfi.
+Author: Akram M. Lrhorfi.
 
 Code: [MIT License](LICENSE).

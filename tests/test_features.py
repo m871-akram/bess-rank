@@ -1,4 +1,4 @@
-"""No look-ahead (CLAUDE.md rule 2): features for day D only use data known at 11:00 on D-1.
+"""No look-ahead (RULES.md rule 2): features for day D only use data known at 11:00 on D-1.
 
 For a set of delivery days D, every value that is not available at the decision time is
 deleted (features.visible_data), the gaps are filled and the features recomputed; the rows of

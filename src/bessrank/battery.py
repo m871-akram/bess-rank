@@ -19,7 +19,7 @@ from scipy.sparse import lil_matrix
 
 from bessrank import config
 
-# Solvers must agree within this relative tolerance (CLAUDE.md rule 7). The floor of 1 EUR
+# Solvers must agree within this relative tolerance (RULES.md rule 7). The floor of 1 EUR
 # keeps the check meaningful on days whose optimal profit is close to 0.
 AGREEMENT_RTOL = 1e-6
 

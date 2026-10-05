@@ -8,7 +8,7 @@ Steps, each a function called from `python -m bessrank.run explore <step>`:
 - forecasts: regenerate the test-year forecasts with the frozen code and check that they give
   the official daily profits (the S3 forecasts stayed in that session's VM);
 - xgb-variants: the XGBoost pair without TSO generation forecasts (§8 robustness) and with
-  tree counts fixed from validation (Akram's decision 2 on the S3 report);
+  tree counts fixed from validation (decision 2 on the S3 report, 2026-10-05);
 - the analyses (sensitivity, stability, accuracy vs value, where profit is lost, figures).
 """
 import json
@@ -171,7 +171,7 @@ def _solve_job(job):
 
 def solve_profits(vectors, names, bat=battery.DEFAULT_BATTERY, workers=4):
     """evaluate.parallel_daily_profits with a chosen battery. Every day is solved by HiGHS and
-    re-checked by SCIP, and perfect foresight must be >= every vector (CLAUDE.md rule 7)."""
+    re-checked by SCIP, and perfect foresight must be >= every vector (RULES.md rule 7)."""
     names = ["S-perfect"] + [n for n in names if n != "S-perfect"]
     chunks = [names[i::workers] for i in range(workers) if names[i::workers]]
     keys = ["ts_utc", "delivery_day", "price"]

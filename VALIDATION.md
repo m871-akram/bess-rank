@@ -273,7 +273,7 @@ a value part (the price model's values in the true order) and the rest (interact
   that day the quarter's difference is −0.28 €/day. The "-rank" construction is sensitive when a
   near-tie in the ranker's order meets a large gap between the price model's values.
 
-### 9.3 Tree-count check (Akram's decision 2)
+### 9.3 Tree-count check (decision 2 on the S3 report)
 
 The XGBoost pair was refitted on the test year with the validation tree counts at every refit
 (XGB-reg 467/223/571, XGB-rank 83/88/151 trees for seeds 0/1/2), without early stopping.
