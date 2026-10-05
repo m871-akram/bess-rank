@@ -325,7 +325,7 @@
     "runtime_minutes": 20.5,
     "fits_with_same_n_iter": "48/48",
     "max_abs_daily_profit_diff_eur": 2.27e-13,
-    "note": "run on 2026-10-05 from a session script calling the same explore.py function, started before the first S4 commit (HEAD 7384c16 plus the uncommitted explore.py); the function is unchanged in b772e60 and later. git_commit below is the commit at the time this entry was written.",
+    "note": "run on 2026-10-05 by scripts/s4_session_jobs.py (committed verbatim in S5), started at 10:07 UTC before the first S4 commit (HEAD 7384c16 plus the uncommitted explore.py); the functions it calls are unchanged in every later commit. git_commit below is the commit when this entry was first written.",
     "run_utc": "2026-10-05T10:46:00+00:00",
     "git_commit": "6b9dd08cff15a83664fb0d37afd89c2de75aa0bd",
     "python": "3.11.15",
@@ -343,13 +343,16 @@
       "matplotlib": "3.11.2",
       "mlflow": "3.16.1",
       "pytest": "9.1.1"
-    }
+    },
+    "script": "scripts/s4_session_jobs.py",
+    "script_sha256": "3c22ab1836c9f37f020b97376fe2689fdf3cf5521d0b2409f229c02d58314f45",
+    "equivalent_command": "BESS_UNLOCK_TEST=1 python -m bessrank.run explore forecasts"
   },
   "explore_xgb-variants": {
     "label": "exploratory (PLAN.md \u00a78)",
     "function": "explore.run_xgb_variants",
     "runtime_minutes": 2.7,
-    "note": "run on 2026-10-05 from a session script calling the same explore.py function, started before the first S4 commit (HEAD 7384c16 plus the uncommitted explore.py); the function is unchanged in b772e60 and later. git_commit below is the commit at the time this entry was written.",
+    "note": "run on 2026-10-05 by scripts/s4_session_jobs.py (committed verbatim in S5), started at 10:07 UTC before the first S4 commit (HEAD 7384c16 plus the uncommitted explore.py); the functions it calls are unchanged in every later commit. git_commit below is the commit when this entry was first written.",
     "run_utc": "2026-10-05T10:46:00+00:00",
     "git_commit": "6b9dd08cff15a83664fb0d37afd89c2de75aa0bd-dirty",
     "python": "3.11.15",
@@ -367,6 +370,9 @@
       "matplotlib": "3.11.2",
       "mlflow": "3.16.1",
       "pytest": "9.1.1"
-    }
+    },
+    "script": "scripts/s4_session_jobs.py",
+    "script_sha256": "3c22ab1836c9f37f020b97376fe2689fdf3cf5521d0b2409f229c02d58314f45",
+    "equivalent_command": "BESS_UNLOCK_TEST=1 python -m bessrank.run explore xgb-variants"
   }
 }
