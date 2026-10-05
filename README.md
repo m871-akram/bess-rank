@@ -157,7 +157,44 @@ of every stage are in [`results/provenance.json`](results/provenance.json).
 
 ## Databricks
 
-*To be completed after the pipeline run (S5).*
+The official XGBoost test pipeline also runs as a Databricks job on serverless compute (Free
+Edition).
+
+- **What runs there.** `python -m bessrank.run pipeline` packs one commit's code (a `git
+  archive` of `src/`, `PREREGISTRATION.lock` and the frozen hyperparameters) and uploads it to
+  the Unity Catalog volume `workspace.bess.raw`. It then imports
+  [`notebooks/01_pipeline.py`](notebooks/01_pipeline.py) and runs the job `bess-rank-pipeline`
+  ([definition](notebooks/bess-rank-pipeline.job.json); serverless, no schedule). The notebook
+  is a thin wrapper around [`bessrank.pipeline`](src/bessrank/pipeline.py), which does the
+  following:
+  - refits the XGBoost pair every quarter with the frozen hyperparameters and 3 seeds;
+  - builds the five non-LSTM strategies;
+  - solves every day with HiGHS and re-checks it with SCIP, with the same stop rules as the VM.
+
+  It is a test-type run: the job passes `BESS_UNLOCK_TEST=1` and the bundle carries the lock
+  file. Package versions are pinned to those of the S3 run, and no Git credentials are stored
+  in Databricks.
+- **Delta tables** (`workspace.bess`; every row carries the commit and the test quarter):
+
+  | Table | Rows | Content |
+  |---|---|---|
+  | `gold_features` | 8,760 | the 42 features for every test hour |
+  | `gold_predictions` | 8,760 | actual price, XGBoost forecasts (per seed and averaged), the five strategies' price vectors |
+  | `gold_schedules` | 43,800 | per strategy and hour: charge, discharge, state of charge, cash flow |
+  | `gold_daily_profit` | 1,825 | per strategy and day: profit and cumulative profit |
+
+- **MLflow experiment `bess-rank`.** 24 runs, one per fit (hyperparameters, tree count, the
+  validation-year selection metric, the fit's test-quarter RMSE or Spearman ρ, commit), plus one
+  summary run with the test metrics.
+- **Parity with the VM run.** Run 967734030312010 (commit 4cd8d8a; 5.9 min in the notebook, about
+  7 min end to end) reproduced all 24
+  fits' forecasts exactly (largest difference 0.0). The daily profits of the five strategies
+  match the S3 results within 2.3e-13 € on all 365 days. H1 recomputed from the Databricks
+  numbers gives +1.83 €/day (95% CI 0.78 to 2.84). Details:
+  [`results/databricks_pipeline.json`](results/databricks_pipeline.json).
+- **Why the LSTM stays in the VM.** Running it on serverless would mean installing torch there.
+  The LSTM refits also took most of the test run's 19 minutes, while Free Edition compute has
+  daily quotas. The LSTM pair is reproduced in the VM instead (`explore forecasts` above).
 
 ## Limitations
 

@@ -374,5 +374,29 @@
     "script": "scripts/s4_session_jobs.py",
     "script_sha256": "3c22ab1836c9f37f020b97376fe2689fdf3cf5521d0b2409f229c02d58314f45",
     "equivalent_command": "BESS_UNLOCK_TEST=1 python -m bessrank.run explore xgb-variants"
+  },
+  "databricks_pipeline": {
+    "job": "bess-rank-pipeline",
+    "run_id": 967734030312010,
+    "result": "SUCCESS",
+    "pipeline_commit": "4cd8d8a3a45c3ef2269f12bc04d08909b574ddfb",
+    "run_utc": "2026-10-05T12:23:48+00:00",
+    "git_commit": "4cd8d8a3a45c3ef2269f12bc04d08909b574ddfb",
+    "python": "3.11.15",
+    "packages": {
+      "pandas": "3.0.6",
+      "numpy": "2.4.6",
+      "pyarrow": "25.0.1",
+      "requests": "2.34.2",
+      "holidays": "0.105",
+      "scipy": "1.17.1",
+      "ortools": "9.15.6755",
+      "xgboost": "3.2.0",
+      "scikit-learn": "1.9.1",
+      "torch": "2.14.1+cpu",
+      "matplotlib": "3.11.2",
+      "mlflow": "3.16.1",
+      "pytest": "9.1.1"
+    }
   }
 }
