@@ -1,0 +1,5 @@
+hypothesis,role,comparison,statistic,estimate,ci95_low,ci95_high,margin,verdict,annual_diff_eur_per_mw,relative_to_reg_profit,days_rank_better,days_reg_better,days_identical_price_vector,reg_rmse_eur_mwh
+H1,confirmatory,S-xgb-rank - S-xgb-reg,mean daily profit difference (EUR/day),1.8280097696703688,0.779466409849975,2.839666514505667,,supported,667.2235659296846,0.009654955308187536,178.0,116.0,0.0,
+H2,secondary,S-xgb-rank - S-xgb-reg,RMSE difference over all hours (EUR/MWh),-0.2505816611767564,-0.37095908455376025,-0.14278398279941057,0.30262187496381937,inconclusive,,,,,,30.262187496381937
+H3,secondary,S-lstm-rank - S-lstm-reg,mean daily profit difference (EUR/day),-0.08120013707361169,-1.1928400360559381,1.0342755149487075,,inconclusive,-29.638050031868268,-0.0004242273181874842,154.0,117.0,0.0,
+LSTM RMSE,descriptive,S-lstm-rank - S-lstm-reg,RMSE difference over all hours (EUR/MWh),-0.12064017718437015,-0.18246850079049454,-0.039644800480368426,0.2850093478047842,descriptive (no test),,,,,,28.50093478047842
