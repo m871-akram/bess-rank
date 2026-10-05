@@ -297,5 +297,26 @@
       "mlflow": "3.16.1",
       "pytest": "9.1.1"
     }
+  },
+  "explore_conformal-cvar": {
+    "label": "exploratory (PLAN.md \u00a78)",
+    "run_utc": "2026-10-05T10:44:51+00:00",
+    "git_commit": "5aa95b4b9a76fd9e78e4d13171192901949d34b3",
+    "python": "3.11.15",
+    "packages": {
+      "pandas": "3.0.6",
+      "numpy": "2.4.6",
+      "pyarrow": "25.0.1",
+      "requests": "2.34.2",
+      "holidays": "0.105",
+      "scipy": "1.17.1",
+      "ortools": "9.15.6755",
+      "xgboost": "3.2.0",
+      "scikit-learn": "1.9.1",
+      "torch": "2.14.1+cpu",
+      "matplotlib": "3.11.2",
+      "mlflow": "3.16.1",
+      "pytest": "9.1.1"
+    }
   }
 }

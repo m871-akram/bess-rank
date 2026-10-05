@@ -257,6 +257,27 @@ Day with the largest |S-xgb-rank - S-xgb-reg| profit difference: 2025-10-15.
 
 ![example day](fig_example_day.png)
 
+## F. Conformal quantiles and the CVaR frontier (stretch)
+
+XGB-quantile (19 levels, XGB-reg's hyperparameters, seed 0) fitted once on the training period, calibrated by CQR on the validation year, applied to the test year without refits. 200 scenarios per day: Gaussian copula with the within-day residual correlation of the training period, marginals from the calibrated quantiles (linear tails beyond 5% and 95%). Schedule: maximise mean scenario profit - lambda x CVaR 95% of the loss (Rockafellar-Uryasev), OR-Tools SCIP, re-solved with HiGHS; settled at the actual prices.
+
+| set | pinball_loss_eur_mwh | coverage 90% | coverage 80% | coverage 70% | coverage 60% | coverage 50% | coverage 40% | coverage 30% | coverage 20% | coverage 10% |
+|---|---|---|---|---|---|---|---|---|---|---|
+| validation, raw | 6.386 | 0.861 | 0.757 | 0.649 | 0.552 | 0.452 | 0.36 | 0.272 | 0.179 | 0.091 |
+| test, raw | 7.795 | 0.85 | 0.719 | 0.607 | 0.509 | 0.416 | 0.325 | 0.238 | 0.156 | 0.076 |
+| test, CQR-calibrated | 7.766 | 0.886 | 0.758 | 0.648 | 0.544 | 0.451 | 0.356 | 0.263 | 0.175 | 0.083 |
+
+| Schedule | Profit (EUR/MW/year) | Capture | Mean daily profit (EUR) | VaR 5%: P5 (EUR) | ES 5%: worst 5% (EUR) | Losing days | Max drawdown (EUR) |
+|---|---|---|---|---|---|---|---|
+| lambda 0 | 68821 | 94.0% | 188.55 | 13.95 | 5.94 | 0.5% | 21.97 |
+| lambda 0.5 | 65524 | 89.5% | 179.52 | 10.85 | 1.96 | 0.8% | 17.81 |
+| lambda 1 | 63180 | 86.3% | 173.1 | 8.68 | 1.58 | 0.5% | 13.62 |
+| lambda 2 | 59414 | 81.2% | 162.78 | 0.15 | -0.58 | 0.5% | 8.47 |
+| lambda 5 | 55989 | 76.5% | 153.39 | 0.0 | -0.26 | 0.3% | 5.02 |
+| S-xgb-reg | 69107 | 94.4% | 189.33 | 14.81 | 5.68 | 1.1% | 15.97 |
+
+![CVaR frontier](fig_cvar_frontier.png)
+
 ## F. SHAP: top 10 features on the test year (stretch)
 
 Mean |SHAP| (TreeSHAP) of the training-period XGB-reg (EUR/MWh) and XGB-rank (score units).

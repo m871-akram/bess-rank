@@ -25,7 +25,9 @@ raw numbers).
     2.36): about 0.5 €/day of the official effect came from XGB-reg's unstable early stopping;
   - order is two-thirds of S-xgb-reg's gap to perfect foresight (7.6 of 11.2 €/day). The BiLSTM
     price model already orders the hours almost as well as XGB-rank, which is why the LSTM ranker
-    adds nothing; its Jul–Sep 2026 loss is one day (2026-09-14, −108 € of −134 €).
+    adds nothing; its Jul–Sep 2026 loss is one day (2026-09-14, −108 € of −134 €);
+  - stretch: CVaR-constrained schedules from conformal scenarios lower both the mean profit
+    (−5% to −19%) and the realized ES on the test year; only the drawdown improves.
 
 ## 1. Purpose and scope
 
@@ -291,7 +293,45 @@ quarters with many trees (0.28 and 0.80). Part of the official H1 effect (about 
 from early-stopping noise in the price model's refits; most of it does not. The official verdict
 stands as pre-registered; this is a check, not a re-test.
 
-<!-- CVAR -->
+### 9.4 Conformal quantiles and the CVaR frontier (stretch)
+
+XGB-quantile (19 levels, XGB-reg's hyperparameters, seed 0, 201 trees) was fitted once on the
+training period, calibrated by conformalized quantile regression on the validation year and
+applied to the test year without refits. Test-year coverage of the central intervals, raw → CQR:
+90%: 85.0% → 88.6%; 50%: 41.6% → 45.1%; mean pinball loss 7.80 → 7.77 €/MWh. CQR narrows the
+under-coverage but does not remove it: the price level drifted after the calibration year
+(section 8).
+
+200 scenarios per day (Gaussian copula with the training-period within-day residual correlation,
+marginals from the calibrated quantiles) feed a schedule that maximises the mean scenario profit
+minus λ × CVaR 95% of the loss (Rockafellar–Uryasev), solved by SCIP and re-solved by HiGHS (both
+agree on all 1,825 day-λ solves), settled at the actual prices:
+
+| Schedule | Profit (€/MW/year) | Capture | VaR 5%: P5 (€) | ES 5%: worst 5% (€) | Losing days | Max drawdown (€) |
+|---|---|---|---|---|---|---|
+| λ = 0 | 68,821 | 94.0% | 13.95 | 5.94 | 0.5% | 22.0 |
+| λ = 0.5 | 65,524 | 89.5% | 10.85 | 1.96 | 0.8% | 17.8 |
+| λ = 1 | 63,180 | 86.3% | 8.68 | 1.58 | 0.5% | 13.6 |
+| λ = 2 | 59,414 | 81.2% | 0.15 | −0.58 | 0.5% | 8.5 |
+| λ = 5 | 55,989 | 76.5% | 0.00 | −0.26 | 0.3% | 5.0 |
+| S-xgb-reg (reference) | 69,107 | 94.4% | 14.82 | 5.68 | 1.1% | 16.0 |
+
+![CVaR frontier](results/explore/fig_cvar_frontier.png)
+
+On this test year risk aversion buys no tail protection. Mean profit falls by 5% (λ = 0.5) to 19%
+(λ = 5), and the realized ES falls with it (5.9 → −0.3 €). Only the maximum drawdown improves
+(22 → 5 €). Losses are rare (0.3–0.8% of days), and the worst 5% of days are days with small
+spreads (perfect foresight earns 14.7 € on them), not large losses. The risk-averse schedules
+give up spread on every day, those days included. λ = 0 is close to S-xgb-reg (−286 €/MW/year)
+with a single unrefitted model.
+
+### 9.5 SHAP (stretch)
+
+Mean |SHAP| on the test year of the training-period models (`results/explore/shap_top10.csv`):
+XGB-rank draws 62% of its attribution from the within-day residual-load deviation and rank, and
+another 17% from the lagged rank and 28-day profile features. XGB-reg's top three are level
+features: the residual-load forecast (18%) and the prices on D-1 (13%) and D-7 (11%). The ranker
+leans on the features whose distribution stayed stable (section 8).
 
 ## 10. Findings and recommendations
 
