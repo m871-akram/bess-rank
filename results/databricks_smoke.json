@@ -1,0 +1,40 @@
+{
+  "checked_utc": "2026-10-05T06:49:11Z",
+  "steps": [
+    {
+      "step": "authentication",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "step": "schema workspace.bess",
+      "ok": true,
+      "detail": "exists"
+    },
+    {
+      "step": "volume workspace.bess.raw",
+      "ok": true,
+      "detail": "exists"
+    },
+    {
+      "step": "upload processed parquet",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "step": "import notebook",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "step": "submit serverless run",
+      "ok": true,
+      "detail": "run_id 106847070089713"
+    },
+    {
+      "step": "serverless run",
+      "ok": true,
+      "detail": "SUCCESS after 95 s: {\"rows_fit\": 6575, \"rows_holdout\": 2208, \"rmse_holdout_eur_mwh\": 24.826852832805464, \"xgboost\": \"3.2.0\", \"delta_table\": \"workspace.bess.smoke_predictions\"}"
+    }
+  ]
+}

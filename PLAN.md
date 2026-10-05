@@ -76,7 +76,7 @@ Neighbour prices (FR 254, NL 256, AT 4170) are optional; add them only if Day 1 
 - Forecast residual load = 411 − (wind + PV). Check once that it equals 4362.
 
 **Periods**
-- **Train:** 2018-10-01 → 2024-09-30.
+- **Train:** 2019-01-01 → 2024-09-30. Data from 2018-10-01 feed only the lagged features (start moved by the missing-value rules below).
 - **Validation:** 2024-10-01 → 2025-09-30.
 - **Test (locked):** 2025-10-01 → 2026-09-30.
 
@@ -86,8 +86,15 @@ Neighbour prices (FR 254, NL 256, AT 4170) are optional; add them only if Day 1 
 
 **Persistence.** Cloud VMs are fresh each session. `python -m bessrank.run data`:
 1. pulls `processed/hourly.parquet` from the Databricks volume if it is reachable;
-2. otherwise downloads from SMARD (at most 4 concurrent requests, retries with backoff, about 3,000 requests) and builds the parquet;
+2. otherwise downloads from SMARD (at most 4 concurrent requests and about 10 requests/s, retries with backoff, about 3,000 requests) and builds the parquet;
 3. then uploads the parquet to the volume when the API works.
+
+**Missing values** (decided by Akram, 2026-10-05)
+- Gaps of 1–2 hours in any series: linear interpolation in UTC time from the neighbouring hours of the same series. This covers the 00:00 hour that SMARD misses on 25-hour days (123, 125, 411), including 2025-10-26. Every filled value is flagged.
+- The training start moves to the first day after the 2018 run-in of the load forecast 411 (21 gaps of 1–4 days, 2018-10-02 to 2018-12-31): 2019-01-01.
+- Any later training day with a gap longer than 2 hours in a feature series is dropped from training.
+- Validation and test days are never dropped. XGBoost gets NaN (native missing-value handling); the LSTM gets the training-window median for that hour.
+- The counts are in `results/qa_data.md` and `results/features_summary.json` (test period: counts only).
 
 **Data quality report** (`results/qa_data.md`)
 - Coverage, gaps and duplicates per series and year; DST days.
@@ -305,7 +312,7 @@ Anything decided after the lock is a dated amendment in §12 and is labelled exp
 
 ```
 bess-rank/
-  CLAUDE.md  PLAN.md  README.md  VALIDATION.md  requirements.txt  .gitignore  .claude/settings.json
+  CLAUDE.md  PLAN.md  README.md  VALIDATION.md  requirements.txt  pyproject.toml  .gitignore  .claude/settings.json
   src/bessrank/
     config.py      dates, battery parameters, paths, test lock
     data.py        SMARD download, Databricks cache, hourly table, QA report
@@ -384,3 +391,21 @@ bess-rank/
 - **2026-10-04.** Prototype checks on a synthetic 24-hour day:
   - `scipy.optimize.milp` (scipy 1.18) and OR-Tools 9.15 with SCIP both give 215.0312 €, in about 10–15 ms each.
   - XGBoost 3.4.1 accepts `XGBRanker(objective="rank:pairwise", lambdarank_pair_method="mean")` with dense integer labels and `qid`.
+- **2026-10-04 (S0).** Setup, SMARD checks and Databricks status. No test-period value was printed; test-period results below are counts and pass/fail only.
+  - Blocker: the cloud environment's network policy denies `pypi.org` and `files.pythonhosted.org`, so pandas, pyarrow, xgboost, pytest etc. could not be installed. The package code (`config`, `data`, `databricks`, `run`) and tests are written; the lock logic was exercised with plain Python, but the pandas code paths, `tests/`, `results/qa_data.md` and the processed parquet have not run yet. The numbers below come from a throwaway stdlib script on the raw chunks and must be reproduced by `python -m bessrank.run data` / `qa`.
+  - SMARD download: 2,979 weekly chunks (7 hourly series from 2018-10-01, quarter-hour 4169 from the chunk of 2025-09-29) in 105 s with 4 concurrent requests; 0 failures, 0 duplicate timestamps.
+  - ID checks, week 2024-06-10 to 2024-06-16 (168 h, training): 123 + 3791 + 125 = 5097 and 411 − (123 + 3791 + 125) = 4362, both with max |difference| 0.0 MWh. 411 vs actual load 410: MAPE 3.86%, correlation 0.989, no identical hours, mean 52,341 vs 50,512 MWh (411 about 3.6% above 410 that week); 411 has values 25 hours beyond the last 410 value. Consistent with a day-ahead load forecast. The label itself is not exposed by the chart API, so it is confirmed by behaviour, not by name. No mismatch with §2.
+  - Missing hours, 2018-10-01 to 2025-09-30 (61,368 h): 4169 0; 3791 0; 123 2; 125 2; 411 1,036 (2018: 842, 2022: 144, 2023: 49, 2024: 1; longest gap 96 h from 2018-10-02); 410 4 and 4359 4 (all in 2018). 123 and 125 miss only the first hour (00:00 CEST) of the 25-hour days 2023-10-29 and 2024-10-27, and 411 the one of 2024-10-27; the values around them are not shifted (PV peaks at 11:00 UTC on 26, 27 and 28 Oct 2024).
+  - DST: 2024-03-31 has 23 hours and 2024-10-27 has 25 in the raw price series; 7 days of 23 h and 7 of 25 h before the test period.
+  - Negative-price hours: 2018 (Oct–Dec) 27, 2019 211, 2020 298, 2021 139, 2022 69, 2023 301, 2024 457 (equals SMARD's figure in §1), 2025 (Jan–Sep) 525.
+  - Test period (8,760 h), counts and pass/fail: 4169, 3791, 411, 410, 4359 complete (pass); 123 and 125 miss 1 hour each (fail; the first hour of the 25-hour day 2025-10-26, same DST pattern); every hour has 4 quarter-hour prices (pass); SMARD's hourly price equals the quarter-hour mean within 0.01 €/MWh on every hour (pass).
+  - Databricks Free Edition: REST authentication works through the session proxy; schema `workspace.bess` and managed volume `raw` created; Files API upload and download work; notebooks import; serverless `runs/submit` works, `%pip install xgboost` works on serverless, and training and reading the volume ran. MLflow failed at first because serverless blocks reading `spark.mlflow.modelRegistryUri`, which `mlflow.set_registry_uri("databricks-uc")` fixes. The second run then failed on our own path clash (notebook folder = experiment path), now fixed. Stopped after two failed runs (CLAUDE.md), so MLflow logging and the Delta write are still unverified.
+- **2026-10-05 (S0 finished, S1).** No test-period value was printed; test-period results are counts and pass/fail only.
+  - Environment: PyPI now reachable; pandas 3.0.6, scipy 1.17.1, OR-Tools 9.15, XGBoost 3.2.0 (the newest PyPI offers here; `XGBRanker(objective="rank:pairwise", lambdarank_pair_method="mean")` checked on 3.2.0). **torch is not installed:** `download.pytorch.org` redirects to `download-r2.pytorch.org`, which the network policy denies. Needed in S2 for the LSTM.
+  - S0 numbers reproduced by `python -m bessrank.run data` / `qa`: 2,979 chunks in 303 s (4 in flight, ≤ 10 requests/s), 0 failures, 0 duplicate or off-grid timestamps; 5097 and 4362 checks max |difference| 0.0 MWh; 411 vs 410 MAPE 3.86%, correlation 0.9886; missing hours per series and year as in the S0 entry; negative-price hours as in the S0 entry (2024: 457). The "hours of 411 beyond the last 410 value" is 16 now vs 25 in S0: it depends on the time of day of the check.
+  - The processed parquet is on the volume (`processed/hourly.parquet`); a rebuild from the volume gives byte-identical files.
+  - Databricks smoke test passed end to end: serverless run in 95 s, MLflow run `s0-smoke-test` logged in experiment `/Users/<user>/bess-rank` (holdout RMSE 24.83 EUR/MWh, train-period holdout Jul–Sep 2024), Delta table `workspace.bess.smoke_predictions` written (managed, Delta).
+  - Missing values (Akram's rules, §2): 411 has 27 gaps > 2 h: 21 in the 2018 run-in and 6 whole-day gaps in 2022–2023. Training start moved to **2019-01-01** (removes 92 days, 2018-10-01 to 2018-12-31). Read literally, "the first day after which 411 has no gap > 2 h" would be 2023-09-01; 2019-01-01 follows the expected "early 2019" and the separate rule for later gap days (to confirm). 8 training days dropped (2022-02-22, 2022-03-24, 2022-07-20, 2022-07-21, 2022-12-21, 2022-12-22, 2023-03-13, 2023-08-31) of 2,100. Filled 1-hour gaps: the 00:00 hour of 2023-10-29 (train) and 2024-10-27 (validation) in 123, 125 and 411. Validation: 0 days with a missing feature. Test: 2 hours filled (123 and 125 on 2025-10-26), 0 hours missing after filling, 0 days affected.
+  - Features (S1): 42, of which 15 use TSO generation forecasts. Choices: lags look up the same wall-clock hour on D-k (25-hour days average their two 02:00 hours; 23-hour days get 02:00 = mean of 01:00 and 03:00); S-naive-1d/7d use the same mapping. The 28-day profile is the mean of each day's within-day z-scored prices over D-28..D-1. Daily lagged statistics are NaN if any hour is missing. Holidays are German national holidays only; a bridge day is a Monday before a Tuesday holiday or a Friday after a Thursday holiday. `test_features.py` recomputes features from the data visible at 11:00 on D-1 for 37 real days (DST days, gap neighbours, period edges, 30 random) and 6 synthetic days: identical values, exact equality.
+  - Battery: both solvers run with a relative MIP gap of 0 (HiGHS defaults to 1e-4). Agreement check: |a − b| ≤ 1e-6 · max(1 EUR, |a|, |b|).
+  - Validation year (2024-10-01 to 2025-09-30, 365 days; 1,095 solves, HiGHS and SCIP agreed on all; perfect ≥ every strategy on every day): S-perfect 67,519 EUR/MW/year, VaR5 35.72 and ES5 25.84 EUR/day; S-naive-1d 55,115 EUR/MW/year, capture 81.6%, VaR5 −2.58, ES5 −23.79 EUR/day, 5.5% losing days, RMSE 47.08 EUR/MWh, Spearman ρ 0.760; S-naive-7d 54,106 EUR/MW/year, capture 80.1%, VaR5 0.66, ES5 −19.93 EUR/day, 4.9% losing days, RMSE 60.45 EUR/MWh, ρ 0.781. Exploratory: naive-1d − naive-7d = 2.76 EUR/day, block-bootstrap 95% CI [−4.50, 9.81].
