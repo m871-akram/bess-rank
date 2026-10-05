@@ -1,7 +1,5 @@
 # RULES.md: bess-rank
 
-The rules this study follows. PLAN.md is the source of truth for the design, the 3-day schedule (§11) and the lab notebook (§12).
-
 ## The project in one paragraph
 A battery trading on the German day-ahead market (bidding zone DE-LU) earns money by charging in the cheapest hours of a day and discharging in the most expensive ones. Price forecasts are usually trained and judged on RMSE, but the battery's decision depends mostly on the order of the hours within the day. We test whether models trained to rank the hours of each day earn more realized profit than models trained to predict prices, when both feed the same battery optimisation.
 
