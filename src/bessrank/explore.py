@@ -541,7 +541,7 @@ def fig_accuracy_vs_value(fits, corr, out_path=None):
     axes[1].legend(frameon=False, fontsize=8, labelcolor=INK, loc="lower right",
                    title="triangle = ranker (reg values in its order)", title_fontsize=7.5)
     fig.text(0.01, 0.01, "Validation year 2024-10-01 to 2025-09-30, every configuration and seed of the "
-             "S2 search. Data: Bundesnetzagentur | SMARD.de", color=INK_2, fontsize=7.5)
+             "validation-year hyperparameter search. Data: Bundesnetzagentur | SMARD.de", color=INK_2, fontsize=7.5)
     fig.tight_layout(rect=(0, 0.04, 1, 1))
     fig.savefig(out_path or EXPLORE_DIR / "fig_accuracy_vs_value.png", dpi=150, facecolor=SURFACE)
     plt.close(fig)
