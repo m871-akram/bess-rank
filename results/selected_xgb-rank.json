@@ -1,0 +1,24 @@
+{
+  "model": "xgb-rank",
+  "config": 3,
+  "params": {
+    "max_depth": 9,
+    "learning_rate": 0.13274606911924353,
+    "min_child_weight": 4,
+    "subsample": 0.8165844880996367,
+    "colsample_bytree": 0.6498559452686924,
+    "reg_lambda": 0.7004456498012456
+  },
+  "seeds": [
+    0,
+    1,
+    2
+  ],
+  "selection_metric": "spearman_rho_mean",
+  "validation_value": 0.9445322642425281,
+  "n_iter_per_seed": [
+    83,
+    88,
+    151
+  ]
+}
