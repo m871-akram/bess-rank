@@ -1,0 +1,79 @@
+{
+  "data": {
+    "source": "SMARD chart API (Bundesnetzagentur | SMARD.de)",
+    "smard_download_utc_first": "2026-10-05T06:37:33+00:00",
+    "smard_download_utc_last": "2026-10-05T06:42:30+00:00",
+    "first_day": "2018-10-01",
+    "last_day": "2026-09-30",
+    "rows": 70128,
+    "run_utc": "2026-10-05T06:50:48+00:00",
+    "git_commit": "84b472f2f96fbcd0f35713890b056f4f6c51f64e",
+    "python": "3.11.15",
+    "packages": {
+      "pandas": "3.0.6",
+      "numpy": "2.4.6",
+      "pyarrow": "25.0.1",
+      "requests": "2.34.2",
+      "holidays": "0.105",
+      "scipy": "1.17.1",
+      "ortools": "9.15.6755",
+      "xgboost": "3.2.0",
+      "scikit-learn": "1.9.1",
+      "torch": null,
+      "matplotlib": "3.11.2",
+      "mlflow": "3.16.1",
+      "pytest": "9.1.1"
+    }
+  },
+  "features": {
+    "rows": 61368,
+    "features": 42,
+    "train_start": "2019-01-01",
+    "train_days_dropped": 8,
+    "run_utc": "2026-10-05T06:50:50+00:00",
+    "git_commit": "84b472f2f96fbcd0f35713890b056f4f6c51f64e",
+    "python": "3.11.15",
+    "packages": {
+      "pandas": "3.0.6",
+      "numpy": "2.4.6",
+      "pyarrow": "25.0.1",
+      "requests": "2.34.2",
+      "holidays": "0.105",
+      "scipy": "1.17.1",
+      "ortools": "9.15.6755",
+      "xgboost": "3.2.0",
+      "scikit-learn": "1.9.1",
+      "torch": null,
+      "matplotlib": "3.11.2",
+      "mlflow": "3.16.1",
+      "pytest": "9.1.1"
+    }
+  },
+  "validate": {
+    "strategies": [
+      "S-perfect",
+      "S-naive-1d",
+      "S-naive-7d"
+    ],
+    "days": 365,
+    "solver_cross_checks": 1095,
+    "run_utc": "2026-10-05T06:51:17+00:00",
+    "git_commit": "84b472f2f96fbcd0f35713890b056f4f6c51f64e",
+    "python": "3.11.15",
+    "packages": {
+      "pandas": "3.0.6",
+      "numpy": "2.4.6",
+      "pyarrow": "25.0.1",
+      "requests": "2.34.2",
+      "holidays": "0.105",
+      "scipy": "1.17.1",
+      "ortools": "9.15.6755",
+      "xgboost": "3.2.0",
+      "scikit-learn": "1.9.1",
+      "torch": null,
+      "matplotlib": "3.11.2",
+      "mlflow": "3.16.1",
+      "pytest": "9.1.1"
+    }
+  }
+}
