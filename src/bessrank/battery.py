@@ -174,6 +174,11 @@ def solve_day_cvar_ortools(scenarios, lam, battery=DEFAULT_BATTERY, beta=0.95, b
     b = battery
     solver = pywraplp.Solver.CreateSolver(backend)
     solver.SuppressOutput()
+    if backend == "HIGHS":
+        # OR-Tools does not pass RELATIVE_MIP_GAP on to HiGHS, which then stops inside its
+        # default 1e-4 gap (S4: 1.8e-5 relative below SCIP on a test day). HiGHS's own option
+        # applies it, although OR-Tools returns False for the call.
+        solver.SetSolverSpecificParametersAsString("mip_rel_gap=0")
     c = [solver.NumVar(0, b.power_mw, f"c{h}") for h in range(n)]
     d = [solver.NumVar(0, b.power_mw, f"d{h}") for h in range(n)]
     u = [solver.BoolVar(f"u{h}") for h in range(n)]

@@ -560,7 +560,9 @@ def fig_example_day(vectors, daily):
                                   ("S-xgb-rank", ORANGE, 1.8, "S-xgb-rank vector (same values, ranker's order)")]:
         ax.step(hours, v[col], where="mid", color=color, linewidth=lw, label=label)
     ax.set_ylabel("EUR/MWh", color=INK_2, fontsize=9)
-    ax.legend(frameon=False, fontsize=8, labelcolor=INK)
+    top = v[["price", "S-xgb-reg", "S-xgb-rank"]].to_numpy().max()
+    ax.set_ylim(top=top + 0.25 * (top - ax.get_ylim()[0]))  # headroom for the legend
+    ax.legend(frameon=False, fontsize=8, labelcolor=INK, loc="upper center", ncol=3)
     ax.set_title(f"{day}: S-xgb-rank {daily.loc[i, 'S-xgb-rank']:.0f} EUR vs S-xgb-reg "
                  f"{daily.loc[i, 'S-xgb-reg']:.0f} EUR (perfect foresight {daily.loc[i, 'S-perfect']:.0f} EUR)",
                  color=INK, fontsize=10, loc="left")
