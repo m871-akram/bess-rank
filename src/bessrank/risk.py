@@ -1,7 +1,9 @@
 """Risk metrics of daily profit (PLAN.md §5). PSI and conformal calibration come in S4.
 
 All inputs are daily profits in EUR (per MW, the battery is 1 MW). VaR and ES are reported
-as profit levels: a negative value is a loss.
+as profit levels, not as losses: a negative value is a loss. Column names and table headers
+say so ("P5 of daily profit", "mean of the worst 5% of days") so a risk reader does not
+misread the sign (Akram, 2026-10-05).
 """
 import numpy as np
 
@@ -34,8 +36,8 @@ def losing_day_share(daily_profit):
 
 def risk_metrics(daily_profit, alpha=ALPHA):
     return {
-        "var5_eur_per_day": value_at_risk(daily_profit, alpha),
-        "es5_eur_per_day": expected_shortfall(daily_profit, alpha),
+        "var5_p5_of_daily_profit_eur": value_at_risk(daily_profit, alpha),
+        "es5_mean_of_worst5pct_days_eur": expected_shortfall(daily_profit, alpha),
         "max_drawdown_eur": max_drawdown(daily_profit),
         "losing_day_share": losing_day_share(daily_profit),
     }

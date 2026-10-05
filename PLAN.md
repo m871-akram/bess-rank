@@ -76,7 +76,7 @@ Neighbour prices (FR 254, NL 256, AT 4170) are optional; add them only if Day 1 
 - Forecast residual load = 411 − (wind + PV). Check once that it equals 4362.
 
 **Periods**
-- **Train:** 2019-01-01 → 2024-09-30. Data from 2018-10-01 feed only the lagged features (start moved by the missing-value rules below).
+- **Train:** 2019-01-01 → 2024-09-30, without the 8 gap days listed under Missing values. Data from 2018-10-01 to 2018-12-31 feed only the lagged features of the first training days.
 - **Validation:** 2024-10-01 → 2025-09-30.
 - **Test (locked):** 2025-10-01 → 2026-09-30.
 
@@ -91,8 +91,8 @@ Neighbour prices (FR 254, NL 256, AT 4170) are optional; add them only if Day 1 
 
 **Missing values** (decided by Akram, 2026-10-05)
 - Gaps of 1–2 hours in any series: linear interpolation in UTC time from the neighbouring hours of the same series. This covers the 00:00 hour that SMARD misses on 25-hour days (123, 125, 411), including 2025-10-26. Every filled value is flagged.
-- The training start moves to the first day after the 2018 run-in of the load forecast 411 (21 gaps of 1–4 days, 2018-10-02 to 2018-12-31): 2019-01-01.
-- Any later training day with a gap longer than 2 hours in a feature series is dropped from training.
+- Training starts on **2019-01-01**, after the 2018 run-in of the load forecast 411 (21 gaps of 1–4 days, 2018-10-02 to 2018-12-31). It does not move later because of the gaps after that date.
+- From 2019-01-01 on, a training day with a gap longer than 2 hours in any series used by a feature or label (so a value still missing after the 1–2-hour filling) is dropped from training, and only that day. With the data downloaded in S0 these are 8 days: 2022-02-22, 2022-03-24, 2022-07-20, 2022-07-21, 2022-12-21, 2022-12-22, 2023-03-13 and 2023-08-31 (2,092 training days remain of 2,100). Test-period refits apply the same rule to their windows.
 - Validation and test days are never dropped. XGBoost gets NaN (native missing-value handling); the LSTM gets the training-window median for that hour.
 - The counts are in `results/qa_data.md` and `results/features_summary.json` (test period: counts only).
 
@@ -138,22 +138,23 @@ Not used: fuel and carbon prices (no free, clean source). Lagged prices carry th
 
 All models use the same features and training windows, and 3 seeds per final configuration. Each final forecast averages the 3 seeds: mean prediction for price models, mean score for rankers.
 
+- **Version:** XGBoost 3.2.0, the newest the VM's package index offers (the 3.4.1 prototype check in §12 ran elsewhere). All settings below are checked on 3.2.0.
 - **XGB-reg.**
   - Target: hourly price (€/MWh). Objective `reg:squarederror`, `tree_method="hist"`.
 - **XGB-rank.**
   - One query group per delivery day (`qid` = day; rows sorted by day, then hour).
   - Label: dense within-day rank of the actual price, 0 for the cheapest; tied prices share a label.
-  - Objective `rank:pairwise`, with `lambdarank_pair_method="mean"` and enough `lambdarank_num_pair_per_sample` that every pair of a day is used.
-  - Prototype check: XGBoost 3.4 accepts this setup.
+  - Objective `rank:pairwise` with every pair of hours of a day that have different labels, and the plain logistic loss log(1 + exp(−(s_i − s_j))) summed over those pairs (the LSTM-rank loss).
+  - In XGBoost 3.2.0 this is `lambdarank_pair_method="topk"` with `lambdarank_num_pair_per_sample=25` (every hour is in the top 25, so all pairs are built), `lambdarank_normalization=False` and `lambdarank_score_normalization=False`. `tests/test_models.py` checks it against a hand-written gradient. (S2 finding: `"mean"` samples pairs at random, so it cannot guarantee every pair; the v2 text asked for `"mean"`.)
 - **LSTM-reg and LSTM-rank.**
   - **Input:** each sample is one delivery day, a sequence of up to 25 hourly feature vectors with the same features as XGBoost.
     - Features are standardised with training-window statistics only.
     - Days are padded to 25 hours, with a mask.
-  - **Architecture:** bidirectional LSTM (default 2 layers, 64 units, dropout 0.1), then a linear head that outputs one value per hour. Bidirectional means each hour's output sees the whole day.
+  - **Architecture:** bidirectional LSTM (default 2 layers, 64 units, dropout 0.1 between layers and before the head), then a linear head that outputs one value per hour. Bidirectional means each hour's output sees the whole day. Sequences are packed, so padding never reaches a real hour (`tests/test_lstm.py`).
   - **Losses:**
     - LSTM-reg: masked MSE on the standardised price.
     - LSTM-rank: pairwise logistic loss over every pair of hours with different labels, log(1 + exp(−(s_i − s_j))), the analogue of XGBoost's objective.
-  - **Training:** Adam (lr 1e-3), 32 days per batch. Early stopping on the last 3 months of the training window (patience 10, at most 100 epochs). CPU.
+  - **Training:** Adam (lr 1e-3), 32 days per batch. Early stopping on the last 3 months of the training window (patience 10, at most 100 epochs) on the selection metric: RMSE for LSTM-reg, mean within-day Spearman ρ for LSTM-rank. CPU.
 - **XGB-quantile** (stretch, §8).
   - Objective `reg:quantileerror`, with 19 quantiles from 0.05 to 0.95.
   - Calibrated by conformalized quantile regression (CQR) on the validation year.
@@ -208,8 +209,9 @@ If the ranker agrees with the price model's order, the two strategies are identi
 - **Value:** profit (€ per MW per year), daily profit, capture rate (profit ÷ S-perfect profit).
 - **Forecast:** price RMSE and MAE; within-day Spearman ρ; hit rate for the 2 cheapest and the 2 most expensive hours.
 - **Risk** (every strategy):
-  - VaR 5% (the 5th percentile of daily profit);
-  - Expected Shortfall 5% (mean of the worst 5% of days);
+  - VaR 5%, reported as "P5 of daily profit": the 5th percentile of daily profit;
+  - Expected Shortfall 5%, reported as "mean of the worst 5% of days": the mean daily profit of the worst ⌈5% × n⌉ days (19 of 365);
+  - both are profit levels, not losses: a negative value is a loss. Every table labels them this way;
   - maximum drawdown of cumulative profit;
   - share of losing days.
 
@@ -241,7 +243,7 @@ Anything decided after the lock is a dated amendment in §12 and is labelled exp
 ## 7. Validation protocol (2024-10-01 → 2025-09-30; budget sized for the sprint)
 
 - Fit on train, predict the validation year.
-- Early stopping on the last 3 months of the training window, then a refit on the full window with the chosen number of trees or epochs.
+- Early stopping on the last 3 months of the training window, then a refit on the full window with the chosen number of trees or epochs. XGBoost: at most 5,000 trees, stop after 50 trees without improvement, on RMSE for XGB-reg and mean within-day Spearman ρ for XGB-rank.
 - **XGBoost:** random search over 15 configurations per model, seed 0. The best 3 are re-run with 3 seeds, and the best is kept.
   - Search space:
     - max_depth 3–10;

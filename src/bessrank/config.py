@@ -57,6 +57,7 @@ PROCESSED_DIR = DATA_DIR / "processed"
 HOURLY_PARQUET = PROCESSED_DIR / "hourly.parquet"
 HOURLY_META = PROCESSED_DIR / "hourly_meta.json"  # download time, raw duplicate counts
 FEATURES_PARQUET = PROCESSED_DIR / "features.parquet"
+PREDICTIONS_DIR = DATA_DIR / "predictions"  # validation forecasts of every fitted model (S2)
 RESULTS_DIR = ROOT / "results"
 PROVENANCE_JSON = RESULTS_DIR / "provenance.json"
 LOCK_FILE = ROOT / "PREREGISTRATION.lock"
