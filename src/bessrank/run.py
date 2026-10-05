@@ -374,6 +374,18 @@ def write_test_summary(prefix, out, quarter_list):
     (config.RESULTS_DIR / f"{prefix}_summary.md").write_text(text)
 
 
+def cmd_explore(args):
+    """Exploratory analyses after the test run (PLAN.md §8, S4). Outputs go to
+    results/explore/; the official test results are never recomputed or overwritten."""
+    from bessrank import explore
+    config.require_test_unlocked()
+    explore.EXPLORE_DIR.mkdir(parents=True, exist_ok=True)
+    steps = {"forecasts": explore.regenerate_forecasts, "xgb-variants": explore.run_xgb_variants,
+             "analyses": explore.analyses, "conformal-cvar": explore.conformal_cvar}
+    steps[args.step](log=log)
+    update_provenance(f"explore_{args.step}", {"label": "exploratory (PLAN.md §8)"})
+
+
 def cmd_smoke(args):
     from bessrank import databricks
     ok = databricks.smoke_test()
@@ -403,8 +415,10 @@ def main():
     p.add_argument("--amendment", action="store_true",
                    help="re-run after a dated §12 amendment; writes test_amended_* files")
     p.set_defaults(func=cmd_test)
-    for name in ["explore", "report"]:
-        sub.add_parser(name).set_defaults(func=not_yet)
+    p = sub.add_parser("explore", help="exploratory analyses after the test run (PLAN.md §8)")
+    p.add_argument("step", choices=["forecasts", "xgb-variants", "analyses", "conformal-cvar"])
+    p.set_defaults(func=cmd_explore)
+    sub.add_parser("report").set_defaults(func=not_yet)
     args = parser.parse_args()
     args.func(args)
 
