@@ -224,5 +224,57 @@
       "mlflow": "3.16.1",
       "pytest": "9.1.1"
     }
+  },
+  "test": {
+    "first_day": "2025-10-01",
+    "last_day": "2026-09-30",
+    "refit_days": [
+      "2025-10-01",
+      "2026-01-01",
+      "2026-04-01",
+      "2026-07-01"
+    ],
+    "days": 365,
+    "seeds": [
+      0,
+      1,
+      2
+    ],
+    "strategies": [
+      "S-perfect",
+      "S-naive-1d",
+      "S-naive-7d",
+      "S-xgb-reg",
+      "S-xgb-rank",
+      "S-lstm-reg",
+      "S-lstm-rank"
+    ],
+    "solver_cross_checks": 2555,
+    "preregistration_commit": "517478e15fba9bbc3c468eab336ecce1dc6c8c99",
+    "frozen_files_changed_since_preregistration": [],
+    "runtime_seconds": {
+      "features_s": 0.9,
+      "refits_s": 1163.3,
+      "solve_s": 21.9,
+      "total_s": 1187.7
+    },
+    "run_utc": "2026-10-05T09:11:21+00:00",
+    "git_commit": "63324c6f803731b6d6540f741cb62f131f79b6eb",
+    "python": "3.11.15",
+    "packages": {
+      "pandas": "3.0.6",
+      "numpy": "2.4.6",
+      "pyarrow": "25.0.1",
+      "requests": "2.34.2",
+      "holidays": "0.105",
+      "scipy": "1.17.1",
+      "ortools": "9.15.6755",
+      "xgboost": "3.2.0",
+      "scikit-learn": "1.9.1",
+      "torch": "2.14.1+cpu",
+      "matplotlib": "3.11.2",
+      "mlflow": "3.16.1",
+      "pytest": "9.1.1"
+    }
   }
 }
