@@ -126,7 +126,7 @@ def upload_run_outputs(run_type, files, commit=None):
     """Copy a run's forecasts and results/provenance.json to the Databricks volume, in
     runs/<run_type>-<commit>/, and check each file's size there.
 
-    Data files stay out of git (CLAUDE.md rule 9), so the volume is where a later session finds
+    Data files stay out of git (RULES.md rule 9), so the volume is where a later session finds
     them (S4 had to refit the S3 forecasts). A failed upload never stops the run: the local
     files are kept and a warning says which uploads failed. Returns True if every file is there.
     """
@@ -153,7 +153,7 @@ def upload_run_outputs(run_type, files, commit=None):
     return not failed
 
 
-# Display labels: VaR and ES are profit levels, negative = loss (Akram, 2026-10-05).
+# Display labels: VaR and ES are profit levels, negative = loss (decided on 2026-10-05).
 DISPLAY = {
     "profit_eur_per_mw_year": "Profit (EUR/MW/year)", "capture_rate": "Capture",
     "rmse_eur_mwh": "RMSE (EUR/MWh)", "mae_eur_mwh": "MAE (EUR/MWh)", "spearman_rho_mean": "Spearman rho",

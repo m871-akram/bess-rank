@@ -1,6 +1,6 @@
 # Model validation report
 
-Written in session S4 (PLAN.md §8), in the style of a bank's model-risk review. The subject is a
+Written in session S4 (PLAN.md §8; S0–S5 are the build sessions, PLAN.md §11), in the style of a bank's model-risk review. The subject is a
 research pipeline, not a trading system: a simulated 1 MW / 2 MWh battery trades the German
 day-ahead market (DE-LU) only, as a price-taker.
 
@@ -15,7 +15,7 @@ raw numbers).
   closes 16.4% of S-xgb-reg's gap to perfect foresight (667 of 4,074 €/MW/year).
 - **The ranked vector's RMSE was lower, not equal (H2 inconclusive):** −0.25 €/MWh, 95% CI
   −0.37 to −0.14, against a ±0.30 €/MWh equivalence margin.
-- **No difference for the LSTM (H3 inconclusive):** −0.08 €/day, 95% CI −1.19 to 1.03.
+- **No detectable difference for the BiLSTM (H3 inconclusive):** −0.08 €/day, 95% CI −1.19 to 1.03.
 - **Exploratory checks** (not tests, sections 6–9):
   - the XGBoost rank − reg difference keeps a CI above 0 under every battery setting tested
     (+1.16 to +2.73 €/day; degradation 0 and 20 €/MWh, 1 h and 4 h batteries);
@@ -26,7 +26,7 @@ raw numbers).
     refits, mostly XGB-reg's (fixing the trees raises S-xgb-reg by 0.69 €/day, S-xgb-rank by
     0.15);
   - order is two-thirds of S-xgb-reg's gap to perfect foresight (7.6 of 11.2 €/day). The BiLSTM
-    price model already orders the hours almost as well as XGB-rank, which is why the LSTM ranker
+    price model already orders the hours almost as well as XGB-rank, which is why the BiLSTM ranker
     adds nothing; its Jul–Sep 2026 loss is mostly one day (2026-09-14, −108 € of −134 €);
   - stretch: CVaR-constrained schedules from conformal scenarios lower both the mean profit
     (−5% to −19%) and the realized ES on the test year; only the drawdown improves.
@@ -35,7 +35,7 @@ raw numbers).
 
 - **Question.** Does a model trained to rank the hours of each delivery day earn more simulated
   battery profit than the same model family trained to predict prices, when both feed the same
-  daily battery program? The design is a 2×2: XGBoost or bidirectional LSTM, price or rank
+  daily battery program? The design is a 2×2: XGBoost or BiLSTM (bidirectional LSTM), price or rank
   objective (PLAN.md §1, §4).
 - **Controlled comparison.** A "-rank" strategy keeps the price model's forecast values for the
   day and reassigns them to hours in the ranker's order (PLAN.md §5). Within a family only the
@@ -88,7 +88,7 @@ raw numbers).
 - **Settlement.** The schedule is computed on the strategy's price vector and settled at the
   actual prices. Price-taker: a 1 MW battery does not move a market of about 50–60 GW.
 - **Models.** XGBoost 3.2.0 (`reg:squarederror`; `rank:pairwise` over every within-day pair of
-  hours, checked against a hand-written gradient) and a 2-direction LSTM over each day's hours
+  hours, checked against a hand-written gradient) and a BiLSTM (bidirectional LSTM) over each day's hours
   (masked MSE or the same pairwise logistic loss). Hyperparameters were chosen on the validation
   year by RMSE or within-day Spearman ρ, never by profit (PLAN.md §7).
 - **Uncertainty.** Every CI is a moving-block bootstrap over days (7-day blocks, 10,000
@@ -104,13 +104,13 @@ only confirmatory test; H2 and H3 are secondary, without multiplicity adjustment
 | H1 (confirmatory) | S-xgb-rank − S-xgb-reg, mean daily profit (€/day) | +1.83 | 0.78 to 2.84 | supported |
 | H2 (secondary) | RMSE(S-xgb-rank) − RMSE(S-xgb-reg) (€/MWh), margin ±0.30 | −0.25 | −0.37 to −0.14 | inconclusive |
 | H3 (secondary) | S-lstm-rank − S-lstm-reg, mean daily profit (€/day) | −0.08 | −1.19 to 1.03 | inconclusive |
-| LSTM RMSE (descriptive) | RMSE(S-lstm-rank) − RMSE(S-lstm-reg) (€/MWh), margin ±0.29 | −0.12 | −0.18 to −0.04 | no test |
+| BiLSTM RMSE (descriptive) | RMSE(S-lstm-rank) − RMSE(S-lstm-reg) (€/MWh), margin ±0.29 | −0.12 | −0.18 to −0.04 | no test |
 
 H1 supported: +1.83 €/day (95% CI 0.78 to 2.84), +667 €/MW/year (+0.97%). S-xgb-rank closes
 16.4% of S-xgb-reg's gap to perfect foresight (667 of 4,074 €/MW/year), and is better on 178
 days and worse on 116. The ranked vector's RMSE was lower, not equal (H2 inconclusive): its CI
-lies below 0 and crosses −0.30, so it cannot rule out a fall of more than 1%. No difference for
-the LSTM (H3 inconclusive). The §1 headline, which needed H1 and H2 both supported, is not used.
+lies below 0 and crosses −0.30, so it cannot rule out a fall of more than 1%. No detectable difference for
+the BiLSTM (H3 inconclusive). The §1 headline, which needed H1 and H2 both supported, is not used.
 
 **Every strategy** (test year; VaR 5% = P5 of daily profit, ES 5% = mean of the worst 5% of
 days, 19 of 365; both profit levels, negative = loss):
@@ -140,10 +140,10 @@ The model strategies' worst day is −11 to −16 € (naive: −61 and −222 �
 - **Naive benchmarks.** Every model strategy earns 8,700–9,500 €/MW/year more than S-naive-1d
   (82.5% capture), with a 36–40% lower RMSE, positive VaR and ES (naive-1d: −7.6 € and
   −23.8 €) and 0.5–1.1% losing days against 7.9%.
-- **LSTM as challenger.** The BiLSTM price model alone earns about as much as XGB-rank:
+- **BiLSTM as challenger.** The BiLSTM price model alone earns about as much as XGB-rank:
   S-lstm-reg − S-xgb-reg = +2.07 €/day (95% CI 0.71 to 3.45) and S-lstm-reg − S-xgb-rank =
   +0.25 €/day (−1.14 to 1.61), exploratory. It also has the lowest RMSE (28.50 €/MWh) and the
-  fewest losing days. The LSTM ranker adds nothing on top of it (H3), so the family that already
+  fewest losing days. The BiLSTM ranker adds nothing on top of it (H3), so the family that already
   orders the hours well gains nothing from a ranking objective (section 9.2).
 
 ## 6. Sensitivity (exploratory): the same test forecasts, other batteries
@@ -152,7 +152,7 @@ The test forecasts were re-dispatched without retraining (`results/explore/sensi
 Durations other than 2 h keep 1 MW, start and end each day at 50% charge and allow one full cycle
 per day. The base row reproduces the official daily profits (largest difference 2.3e-13 €).
 
-| Setting | S-perfect (€/MW/year) | S-xgb-reg | S-xgb-rank | XGB rank − reg (€/day, 95% CI) | Share of gap closed | LSTM rank − reg (€/day, 95% CI) |
+| Setting | S-perfect (€/MW/year) | S-xgb-reg | S-xgb-rank | XGB rank − reg (€/day, 95% CI) | Share of gap closed | BiLSTM rank − reg (€/day, 95% CI) |
 |---|---|---|---|---|---|---|
 | Base: 2 h, 10 €/MWh | 73,181 | 69,107 | 69,774 | +1.83 (0.78 to 2.84) | 16.4% | −0.08 (−1.19 to 1.03) |
 | Degradation 0 €/MWh | 80,319 | 76,276 | 77,021 | +2.04 (0.99 to 3.06) | 18.4% | −0.12 (−1.22 to 0.98) |
@@ -161,8 +161,8 @@ per day. The base row reproduces the official daily profits (largest difference 
 | 4 h (1 MW / 4 MWh) | 128,419 | 123,716 | 124,712 | +2.73 (1.05 to 4.64) | 21.2% | +0.66 (−0.40 to 1.59) |
 
 The XGBoost result does not depend on the battery settings tested: the rank − reg difference keeps a
-CI above 0 in every setting and closes 16–21% of the gap to perfect foresight. The LSTM pair shows
-no difference in any setting.
+CI above 0 in every setting and closes 16–21% of the gap to perfect foresight. The BiLSTM pair shows
+no detectable difference in any setting.
 
 ## 7. Robustness (exploratory): no TSO generation forecasts
 
@@ -233,7 +233,7 @@ price-level and residual-load features, and XGB-reg's early-stopping tree count 
 Rank correlation with validation profit over 58 fits: RMSE −0.59, within-day Spearman ρ +0.87.
 The pooled correlation mostly separates the rankers (all of them above every price model) from the
 price models. Within the 21 XGB-reg fits it still favours order: Spearman ρ +0.77 (p < 0.001)
-against RMSE −0.36 (p = 0.11). Within the rankers and the 8-fit LSTM groups neither metric orders
+against RMSE −0.36 (p = 0.11). Within the rankers and the 8-fit BiLSTM groups neither metric orders
 the fits reliably (`results/explore/accuracy_vs_value.csv`). Choosing a price model by RMSE is a
 weak proxy for its value to the battery.
 
@@ -261,7 +261,7 @@ a value part (the price model's values in the true order) and the rest (interact
   (6.19 against 5.73), but its values lose 0.31 less and its interaction term is 0.39 more
   favourable, so the two end level (191.41 against 191.16 €/day). LSTM-rank improves Spearman ρ again (+0.009, 0.006 to 0.012) but that is worth only
   0.34 €/day of order, and the interaction takes it back: hence H3 inconclusive.
-- **LSTM, Jul–Sep 2026 (−1.45 €/day).** With true prices the ranker's order is *better* than
+- **BiLSTM, Jul–Sep 2026 (−1.45 €/day).** With true prices the ranker's order is *better* than
   LSTM-reg's in this quarter (order-only gap 3.17 against 3.61 €/day); the loss is in the
   interaction (+1.42 against −0.48), and most of it is one day. On 2026-09-14 (perfect foresight 741 €)
   S-lstm-rank earns 626 € against S-lstm-reg's 734 €: −108 € of the quarter's −134 €. The ranker
@@ -273,7 +273,7 @@ a value part (the price model's values in the true order) and the rest (interact
   that day the quarter's difference is −0.28 €/day. The "-rank" construction is sensitive when a
   near-tie in the ranker's order meets a large gap between the price model's values.
 
-### 9.3 Tree-count check (Akram's decision 2)
+### 9.3 Tree-count check (decision 2 on the S3 report)
 
 The XGBoost pair was refitted on the test year with the validation tree counts at every refit
 (XGB-reg 467/223/571, XGB-rank 83/88/151 trees for seeds 0/1/2), without early stopping.
@@ -346,8 +346,8 @@ leans on within-day features, which drifted much less than the price model's lev
 |---|---|---|---|
 | 1 | Medium | XGB-reg's early stopping is unstable across refits (39 to 858 trees). With both models' validation tree counts fixed, XGB-reg improves (RMSE −1.06 €/MWh, +0.69 €/day; XGB-rank +0.15 €/day) and H1's statistic falls from +1.83 to +1.30 €/day (CI still above 0). | Report the tree-count check next to H1. In future studies, fix tree counts or average several early-stopping windows, and monitor the count at each refit. |
 | 2 | Medium | The results rely on TSO wind and PV forecasts that are published after the auction; without them profits fall by 5–6%. | State it next to every profit number in the README. Before any operational use, replace them with forecasts available at 11:00 on D-1. |
-| 3 | Low | The "-rank" reassignment is sensitive when a near-tie in the ranker's order meets a large gap in the price model's values (2026-09-14: −108 €, most of the LSTM's Jul–Sep loss). | Report per-day contributions with every pair difference; a hybrid rule (keep the price model's order unless the ranker is confident) is a future study, not a change to this one. |
-| 4 | Low | The S3 test forecasts were kept only in that session's VM and had to be regenerated in S4 (reproduced exactly: 48/48 fits, profits within 2.3e-13 €). | Done in S4: the forecasts are on the Databricks volume. Future test-type runs should upload their forecasts automatically. |
+| 3 | Low | The "-rank" reassignment is sensitive when a near-tie in the ranker's order meets a large gap in the price model's values (2026-09-14: −108 €, most of the BiLSTM's Jul–Sep loss). | Report per-day contributions with every pair difference; a hybrid rule (keep the price model's order unless the ranker is confident) is a future study, not a change to this one. |
+| 4 | Low | The S3 test forecasts were kept only in that session's VM and had to be regenerated in S4 (reproduced exactly: 48/48 fits, profits within 2.3e-13 €). | Done: the forecasts are on the Databricks volume (S4), and every `test` and `explore` run now uploads its forecasts automatically (S5). |
 | 5 | Low | The study is hourly while the market clears in quarter-hours since 2025-10-01. | Keep as a stated limitation; a quarter-hour extension is out of scope. |
 | 6 | Info | RMSE is a weak proxy for value: across 58 validation fits, within-day Spearman ρ ranks fits by profit far better than RMSE. | Report an order metric next to RMSE whenever a price model is selected for storage dispatch. |
 
@@ -391,10 +391,19 @@ sign.
   20261004; SMARD download time and the git commit of every stage in `results/provenance.json`.
 - **Data.** SMARD data are never committed; `python -m bessrank.run data` rebuilds them from the
   Databricks volume or SMARD. From S4 the test forecasts are also kept on the volume
-  (`predictions/`), so later sessions do not refit.
+  (`predictions/`), so later sessions do not refit. Since S5, every `test` and `explore` run
+  uploads its forecasts and `provenance.json` to `runs/<run type>-<commit>/` on the volume and
+  checks their size there.
 - **Tests.** `pytest`: the lock, DST days, feature availability (look-ahead), both solvers, the
-  "-rank" reassignment, the XGBoost ranking gradient, LSTM padding, the verdict rules, and the
+  "-rank" reassignment, the XGBoost ranking gradient, BiLSTM padding, the verdict rules, and the
   S4 helpers (PSI, CQR, quarter lookup, oracle vectors).
-- **MLflow and Databricks.** The Databricks smoke test passed in S0 (MLflow run and Delta table);
-  the pipeline notebook, the job and the MLflow runs of the test models are S5 work and not yet
-  done.
+- **MLflow and Databricks.** The Databricks smoke test passed in S0. In S5 the job
+  `bess-rank-pipeline` (serverless, `notebooks/01_pipeline.py`) ran the official XGBoost test
+  pipeline once, at commit 4cd8d8a (run 967734030312010). It reproduced all 24 fits' forecasts
+  of the confirmatory run exactly (largest difference 0.0). The daily profits of the five
+  strategies without the BiLSTM matched within 2.3e-13 € on all 365 days, and H1 recomputed from
+  the Databricks numbers is +1.83 €/day (95% CI 0.78 to 2.84). The run wrote the Delta tables
+  `workspace.bess.gold_features`, `gold_predictions`, `gold_schedules` and `gold_daily_profit`
+  (every row carries the commit), and logged 24 fit runs and a summary run to the MLflow
+  experiment `bess-rank`. HiGHS and SCIP agreed on every day there too. The BiLSTM pair stays in
+  the VM. Details: `results/databricks_pipeline.json`.

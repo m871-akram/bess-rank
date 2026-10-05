@@ -75,7 +75,7 @@ DBX_VOLUME = "raw"
 DBX_VOLUME_PATH = f"/Volumes/{DBX_CATALOG}/{DBX_SCHEMA}/{DBX_VOLUME}"
 
 
-# --- Test-period lock (CLAUDE.md rule 1) ------------------------------------------------
+# --- Test-period lock (RULES.md rule 1) ------------------------------------------------
 class LockedPeriodError(RuntimeError):
     """Raised when code asks for test-period data while the lock is closed."""
 
@@ -83,7 +83,7 @@ class LockedPeriodError(RuntimeError):
 def is_test_unlocked(lock_file=None):
     """True only if BESS_UNLOCK_TEST=1 is set AND the lock file holds a git commit hash.
 
-    The lock file is created after Akram merges the pre-registration (PLAN.md §6), so the
+    The lock file is created after the pre-registration is merged (PLAN.md §6), so the
     environment variable alone is never enough.
     """
     lock_file = Path(lock_file) if lock_file is not None else LOCK_FILE

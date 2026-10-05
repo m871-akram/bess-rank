@@ -4,7 +4,7 @@
 # MAGIC Checks the Databricks path end to end: read the processed hourly table from the volume,
 # MAGIC train a small XGBoost on **training-period days only**, log the run to MLflow and write a
 # MAGIC Delta table. Test-period rows (delivery days from 2025-10-01) are dropped right after
-# MAGIC loading and never used or displayed (CLAUDE.md rule 1).
+# MAGIC loading and never used or displayed (RULES.md rule 1).
 
 # COMMAND ----------
 

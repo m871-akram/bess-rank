@@ -1,4 +1,4 @@
-# Data is never committed (SMARD licensing, CLAUDE.md rule 9)
+# Data is never committed (SMARD licensing, RULES.md rule 9)
 data/
 *.parquet
 

@@ -12,7 +12,7 @@ def daily_profits(vectors, strategies, bat=battery.DEFAULT_BATTERY, cross_check=
 
     `vectors` has one row per delivery hour with `price` (actual) and one column per strategy.
     Returns one row per delivery day and one profit column (EUR) per strategy. Stops the run if
-    the solvers disagree or a strategy beats perfect foresight on any day (CLAUDE.md rule 7).
+    the solvers disagree or a strategy beats perfect foresight on any day (RULES.md rule 7).
     """
     rows = []
     for day, hours in vectors.sort_values("ts_utc").groupby("delivery_day", sort=True):
@@ -197,7 +197,7 @@ def _profits_worker(job):
 
 def parallel_daily_profits(vectors, names, workers=4):
     """daily_profits for many price vectors, split over processes. Every day is still
-    solved by HiGHS and re-checked by SCIP (CLAUDE.md rule 7)."""
+    solved by HiGHS and re-checked by SCIP (RULES.md rule 7)."""
     from concurrent.futures import ProcessPoolExecutor
     chunks = [names[i::workers] for i in range(workers) if names[i::workers]]
     keys = ["ts_utc", "delivery_day", "price"]

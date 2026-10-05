@@ -2,7 +2,7 @@
 
 `python -m bessrank.run data` calls `build_data()`; `python -m bessrank.run qa` calls
 `write_qa_report()`. Everything else reads the table through `load_hourly()`, which keeps the
-test period locked (CLAUDE.md rule 1).
+test period locked (RULES.md rule 1).
 """
 import itertools
 import json

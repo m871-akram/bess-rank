@@ -1,8 +1,7 @@
 """Minimal Databricks REST helpers (Unity Catalog, Files, Workspace, Jobs) and the S0 smoke test.
 
-Authentication: in the Claude Code cloud session the proxy attaches the token for
-DATABRICKS_HOST. If DATABRICKS_TOKEN is set it is sent instead. The token is never printed,
-logged or written to a file (CLAUDE.md rule 11).
+Authentication: the token comes from DATABRICKS_TOKEN or is attached by a network proxy for
+DATABRICKS_HOST. It is never printed, logged or written to a file (RULES.md rule 11).
 """
 import base64
 import json

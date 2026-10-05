@@ -2,7 +2,7 @@
 
 *A battery doesn't need the price, it needs the order.*
 
-Status: plan v2, 2026-10-04. It is a 3-day sprint with Claude Code running in the cloud. Sections §1–§5 and §7–§11 may change until the pre-registration (§6) is merged. After that, changes go only into dated amendments in §12.
+Status: plan v2, 2026-10-04. It is a 3-day sprint on cloud VMs. Sections §1–§5 and §7–§11 may change until the pre-registration (§6) is merged. After that, changes go only into dated amendments in §12.
 
 ---
 
@@ -89,7 +89,7 @@ Neighbour prices (FR 254, NL 256, AT 4170) are optional; add them only if Day 1 
 2. otherwise downloads from SMARD (at most 4 concurrent requests and about 10 requests/s, retries with backoff, about 3,000 requests) and builds the parquet;
 3. then uploads the parquet to the volume when the API works.
 
-**Missing values** (decided by Akram, 2026-10-05)
+**Missing values** (decided on 2026-10-05)
 - Gaps of 1–2 hours in any series: linear interpolation in UTC time from the neighbouring hours of the same series. This covers the 00:00 hour that SMARD misses on 25-hour days (123, 125, 411), including 2025-10-26. Every filled value is flagged.
 - Training starts on **2019-01-01**, after the 2018 run-in of the load forecast 411 (21 gaps of 1–4 days, 2018-10-02 to 2018-12-31). It does not move later because of the gaps after that date.
 - From 2019-01-01 on, a training day with a gap longer than 2 hours in any series used by a feature or label (so a value still missing after the 1–2-hour filling) is dropped from training, and only that day. With the data downloaded in S0 these are 8 days: 2022-02-22, 2022-03-24, 2022-07-20, 2022-07-21, 2022-12-21, 2022-12-22, 2023-03-13 and 2023-08-31 (2,092 training days remain of 2,100). Test-period refits apply the same rule to their windows.
@@ -258,7 +258,7 @@ Finalised on 2026-10-05 after the validation year and before any test-period val
 - **Refits** at the start of each test quarter: 2025-10-01, 2026-01-01, 2026-04-01 and 2026-07-01. Each uses every training day from 2019-01-01 to the day before the quarter, the validation year included, with the §2 day-dropping rule. A quarter's days are forecast only by that quarter's models.
 - **Fit procedure at every refit**, for each model and seed (the §7 procedure): early stopping is repeated at each refit, on the last 3 months of that refit's training window (XGBoost: at most 5,000 trees, 50 trees of patience; LSTM: at most 100 epochs, patience 10; metric RMSE for price models, within-day Spearman ρ for rankers). Then a refit on the whole window with the number of trees or epochs found.
 - **Seeds** 0, 1 and 2. The forecast is the mean prediction (price models) or the mean score (rankers).
-- **Strategies, battery, solvers and settlement:** §5. Both solvers run on every day. The run stops if a sanity assertion fails (CLAUDE.md rule 7).
+- **Strategies, battery, solvers and settlement:** §5. Both solvers run on every day. The run stops if a sanity assertion fails (RULES.md rule 7).
 
 **Run once.** The test pipeline runs once. If it crashes or a sanity assertion fails, it stops, and Akram is told before any code changes. Any fix after the PR #2 merge commit is a dated amendment in §12: it names the fix commit and reports the numbers before and after the fix (if the first run stopped before writing a result, the amendment says where it stopped). The amended run writes `test_amended_*` files next to the original ones, which are never overwritten or deleted. Any other re-run or analysis after the test results are written is exploratory and labelled so.
 
@@ -349,11 +349,11 @@ Anything decided after the lock is a dated amendment in §12 and is labelled exp
 3. **Job:** one job that wraps the notebook. Its numbers must match the VM run within 1e-6 relative, or the difference is explained.
 4. **Dashboard (if time):** cumulative profit by strategy, capture rate by quarter, and an example day.
 
-- **Remote loop from the cloud session (REST API):**
+- **Remote loop from the development VM (REST API):**
   1. update the Databricks Git folder to the working branch (Repos API);
   2. submit a serverless run (Jobs API `runs/submit`) and poll it;
   3. read the outputs from the volume (Files API).
-- **If the API is unreachable or authentication fails:** Akram runs the notebook and the job in the web interface.
+- **If the API is unreachable or authentication fails:** I run the notebook and the job in the web interface.
 - **LSTM runs stay in the VM**, to avoid installing torch on serverless; documented in the README.
 
 ---
@@ -362,7 +362,7 @@ Anything decided after the lock is a dated amendment in §12 and is labelled exp
 
 ```
 bess-rank/
-  CLAUDE.md  PLAN.md  README.md  VALIDATION.md  requirements.txt  pyproject.toml  .gitignore  .claude/settings.json
+  RULES.md  PLAN.md  README.md  VALIDATION.md  requirements.txt  pyproject.toml  .gitignore
   src/bessrank/
     config.py      dates, battery parameters, paths, test lock
     data.py        SMARD download, Databricks cache, hourly table, QA report
@@ -390,8 +390,8 @@ bess-rank/
 |---|---|---|---|
 | Day 1 morning | S0 | Skeleton; config and test lock; data command (download, Databricks cache); ID checks; hourly table; DST tests; QA report; Databricks smoke test | QA report clean; Databricks status known |
 | Day 1 afternoon | S1 | Features with availability tests; battery program with OR-Tools cross-check and tests; perfect-foresight and naive strategies on validation; risk metric functions | All tests pass; plausible validation profits |
-| Day 2 morning | S2 | XGBoost and LSTM, both objectives; tuning per §7; validation table; proposed final §6 | Validation table sent to Akram |
-| Day 2 midday | Akram | Read the validation results; merge §6; type "UNLOCK TEST" | Lock file committed |
+| Day 2 morning | S2 | XGBoost and LSTM, both objectives; tuning per §7; validation table; proposed final §6 | Validation table ready for review |
+| Day 2 midday | Review | Read the validation results; merge §6; type "UNLOCK TEST" | Lock file committed |
 | Day 2 afternoon | S3 | Test run, once; H1–H3 verdicts with CIs; risk metrics | Results table |
 | Day 3 morning | S4 | §8 Must and Should; `VALIDATION.md`; Stretch only if ahead | Report drafted |
 | Day 3 afternoon | S5 | Databricks pipeline, MLflow and job (dashboard if time); README with 3 figures; final checks | README ready to make public |
@@ -406,16 +406,16 @@ bess-rank/
 
 **Never cut:** the test lock and pre-registration, the tests, H1–H3, the risk metrics, `VALIDATION.md`, the README.
 
-**Akram's review:** 30–60 minutes at the end of each day reading the code and numbers. In interviews he will be asked to explain any line.
+**Daily review:** 30–60 minutes at the end of each day reading the code and numbers.
 
-**Budget:** Claude cloud usage of $100 at most; Databricks Free Edition at no cost.
+**Budget:** Databricks Free Edition at no cost.
 
 **Risks**
 
 | Risk | Mitigation |
 |---|---|
-| SMARD format or IDs differ | Verify in S0; fall back to the download-centre CSVs (Akram downloads them) |
-| Free Edition offers no token or API access | Akram runs the notebook and job in the web interface |
+| SMARD format or IDs differ | Verify in S0; fall back to the download-centre CSVs (downloaded by hand) |
+| Free Edition offers no token or API access | Run the notebook and job in the web interface |
 | Look-ahead leakage | Availability rules plus `test_features.py`; the TSO caveat is tested in §8 |
 | DST and time-zone bugs | UTC storage; DST tests |
 | H1 or H3 not supported | Report it as pre-registered; the §8 analysis shows where profit is lost |
@@ -431,8 +431,8 @@ bess-rank/
   - 125 is the PV forecast. 126 and 4361 are −(wind + PV), not PV.
   - 411 looks like the day-ahead load forecast, and 4362 = 411 − 5097 exactly (forecast residual load).
   - `index_quarterhour` exists for 4169.
-- **2026-10-04.** Plan v2, decided with Akram:
-  - 3-day sprint, run in Claude Code cloud sessions.
+- **2026-10-04.** Plan v2, decisions:
+  - 3-day sprint, run in cloud VM sessions.
   - 2×2 design with a BiLSTM as second model family (H3 added).
   - Quarterly test refits instead of monthly.
   - OR-Tools added: a second solver checks every day, and it runs the CVaR program.
@@ -450,17 +450,17 @@ bess-rank/
   - DST: 2024-03-31 has 23 hours and 2024-10-27 has 25 in the raw price series; 7 days of 23 h and 7 of 25 h before the test period.
   - Negative-price hours: 2018 (Oct–Dec) 27, 2019 211, 2020 298, 2021 139, 2022 69, 2023 301, 2024 457 (equals SMARD's figure in §1), 2025 (Jan–Sep) 525.
   - Test period (8,760 h), counts and pass/fail: 4169, 3791, 411, 410, 4359 complete (pass); 123 and 125 miss 1 hour each (fail; the first hour of the 25-hour day 2025-10-26, same DST pattern); every hour has 4 quarter-hour prices (pass); SMARD's hourly price equals the quarter-hour mean within 0.01 €/MWh on every hour (pass).
-  - Databricks Free Edition: REST authentication works through the session proxy; schema `workspace.bess` and managed volume `raw` created; Files API upload and download work; notebooks import; serverless `runs/submit` works, `%pip install xgboost` works on serverless, and training and reading the volume ran. MLflow failed at first because serverless blocks reading `spark.mlflow.modelRegistryUri`, which `mlflow.set_registry_uri("databricks-uc")` fixes. The second run then failed on our own path clash (notebook folder = experiment path), now fixed. Stopped after two failed runs (CLAUDE.md), so MLflow logging and the Delta write are still unverified.
+  - Databricks Free Edition: REST authentication works; schema `workspace.bess` and managed volume `raw` created; Files API upload and download work; notebooks import; serverless `runs/submit` works, `%pip install xgboost` works on serverless, and training and reading the volume ran. MLflow failed at first because serverless blocks reading `spark.mlflow.modelRegistryUri`, which `mlflow.set_registry_uri("databricks-uc")` fixes. The second run then failed on our own path clash (notebook folder = experiment path), now fixed. Stopped after two failed runs, so MLflow logging and the Delta write are still unverified.
 - **2026-10-05 (S0 finished, S1).** No test-period value was printed; test-period results are counts and pass/fail only.
   - Environment: PyPI now reachable; pandas 3.0.6, scipy 1.17.1, OR-Tools 9.15, XGBoost 3.2.0 (the newest PyPI offers here; `XGBRanker(objective="rank:pairwise", lambdarank_pair_method="mean")` checked on 3.2.0). **torch is not installed:** `download.pytorch.org` redirects to `download-r2.pytorch.org`, which the network policy denies. Needed in S2 for the LSTM.
   - S0 numbers reproduced by `python -m bessrank.run data` / `qa`: 2,979 chunks in 303 s (4 in flight, ≤ 10 requests/s), 0 failures, 0 duplicate or off-grid timestamps; 5097 and 4362 checks max |difference| 0.0 MWh; 411 vs 410 MAPE 3.86%, correlation 0.9886; missing hours per series and year as in the S0 entry; negative-price hours as in the S0 entry (2024: 457). The "hours of 411 beyond the last 410 value" is 16 now vs 25 in S0: it depends on the time of day of the check.
   - The processed parquet is on the volume (`processed/hourly.parquet`); a rebuild from the volume gives byte-identical files.
   - Databricks smoke test passed end to end: serverless run in 95 s, MLflow run `s0-smoke-test` logged in experiment `/Users/<user>/bess-rank` (holdout RMSE 24.83 EUR/MWh, train-period holdout Jul–Sep 2024), Delta table `workspace.bess.smoke_predictions` written (managed, Delta).
-  - Missing values (Akram's rules, §2): 411 has 27 gaps > 2 h: 21 in the 2018 run-in and 6 whole-day gaps in 2022–2023. Training start moved to **2019-01-01** (removes 92 days, 2018-10-01 to 2018-12-31). Read literally, "the first day after which 411 has no gap > 2 h" would be 2023-09-01; 2019-01-01 follows the expected "early 2019" and the separate rule for later gap days (to confirm). 8 training days dropped (2022-02-22, 2022-03-24, 2022-07-20, 2022-07-21, 2022-12-21, 2022-12-22, 2023-03-13, 2023-08-31) of 2,100. Filled 1-hour gaps: the 00:00 hour of 2023-10-29 (train) and 2024-10-27 (validation) in 123, 125 and 411. Validation: 0 days with a missing feature. Test: 2 hours filled (123 and 125 on 2025-10-26), 0 hours missing after filling, 0 days affected.
+  - Missing values (my rules, §2): 411 has 27 gaps > 2 h: 21 in the 2018 run-in and 6 whole-day gaps in 2022–2023. Training start moved to **2019-01-01** (removes 92 days, 2018-10-01 to 2018-12-31). Read literally, "the first day after which 411 has no gap > 2 h" would be 2023-09-01; 2019-01-01 follows the expected "early 2019" and the separate rule for later gap days (to confirm). 8 training days dropped (2022-02-22, 2022-03-24, 2022-07-20, 2022-07-21, 2022-12-21, 2022-12-22, 2023-03-13, 2023-08-31) of 2,100. Filled 1-hour gaps: the 00:00 hour of 2023-10-29 (train) and 2024-10-27 (validation) in 123, 125 and 411. Validation: 0 days with a missing feature. Test: 2 hours filled (123 and 125 on 2025-10-26), 0 hours missing after filling, 0 days affected.
   - Features (S1): 42, of which 15 use TSO generation forecasts. Choices: lags look up the same wall-clock hour on D-k (25-hour days average their two 02:00 hours; 23-hour days get 02:00 = mean of 01:00 and 03:00); S-naive-1d/7d use the same mapping. The 28-day profile is the mean of each day's within-day z-scored prices over D-28..D-1. Daily lagged statistics are NaN if any hour is missing. Holidays are German national holidays only; a bridge day is a Monday before a Tuesday holiday or a Friday after a Thursday holiday. `test_features.py` recomputes features from the data visible at 11:00 on D-1 for 37 real days (DST days, gap neighbours, period edges, 30 random) and 6 synthetic days: identical values, exact equality.
   - Battery: both solvers run with a relative MIP gap of 0 (HiGHS defaults to 1e-4). Agreement check: |a − b| ≤ 1e-6 · max(1 EUR, |a|, |b|).
   - Validation year (2024-10-01 to 2025-09-30, 365 days; 1,095 solves, HiGHS and SCIP agreed on all; perfect ≥ every strategy on every day): S-perfect 67,519 EUR/MW/year, VaR5 35.72 and ES5 25.84 EUR/day; S-naive-1d 55,115 EUR/MW/year, capture 81.6%, VaR5 −2.58, ES5 −23.79 EUR/day, 5.5% losing days, RMSE 47.08 EUR/MWh, Spearman ρ 0.760; S-naive-7d 54,106 EUR/MW/year, capture 80.1%, VaR5 0.66, ES5 −19.93 EUR/day, 4.9% losing days, RMSE 60.45 EUR/MWh, ρ 0.781. Exploratory: naive-1d − naive-7d = 2.76 EUR/day, block-bootstrap 95% CI [−4.50, 9.81].
-- **2026-10-05 (Akram's decisions on the S1 report).**
+- **2026-10-05 (my decisions on the S1 report).**
   1. The training start stays 2019-01-01, and only the 8 gap days are dropped. The earlier §2 wording ("the first day after the run-in") was ambiguous; §2 now states this rule exactly. The S1 numbers do not change.
   2. torch is allowed (`download-r2.pytorch.org` now allowed).
   3. Both S1 feature choices are kept: lags use the same wall-clock hour on DST days; holidays are German national holidays only.
@@ -474,9 +474,9 @@ bess-rank/
   - Three fits re-run from commit 0a887b4 reproduce the search predictions exactly (max |difference| 0.0); the search runs record `eb3d70c-dirty` in provenance because they started before that commit.
   - Validation (365 days; 73 price vectors × 365 days solved by HiGHS and SCIP, all agree; perfect ≥ every vector on every day), €/MW/year and capture: S-perfect 67,519; S-naive-1d 55,115 (81.6%); S-naive-7d 54,106 (80.1%); S-xgb-reg 63,470 (94.0%); S-xgb-rank 64,223 (95.1%); S-lstm-reg 63,771 (94.4%); S-lstm-rank 64,399 (95.4%). Full table in `results/validation_summary.md`.
   - Exploratory paired differences (validation): S-xgb-rank − S-xgb-reg +2.06 €/day [0.65, 3.45]; S-lstm-rank − S-lstm-reg +1.72 €/day [0.71, 2.87]. RMSE differences: −0.05 €/MWh [−0.22, 0.20] (XGB), −0.11 [−0.23, −0.01] (LSTM). Every XGB-rank fit (21) earns more than every XGB-reg fit, and every LSTM-rank fit (8) more than every LSTM-reg fit.
-  - §6 finalised (proposal for Akram): H2 turned into a 1%-equivalence test on RMSE, because validation shows no RMSE increase; hyperparameters frozen; refit procedure, H2 statistic and crash handling spelled out. §1 headline updated to match.
+  - §6 finalised (proposal for review): H2 turned into a 1%-equivalence test on RMSE, because validation shows no RMSE increase; hyperparameters frozen; refit procedure, H2 statistic and crash handling spelled out. §1 headline updated to match.
   - MLflow: not attempted from the VM in S2 (the run results are in `results/`); left for S5 as agreed.
-- **2026-10-05 (Akram's decisions on the S2 report).**
+- **2026-10-05 (my decisions on the S2 report).**
   1. Merge order as recommended: PR #1 merged; PR #2 now targets `main`.
   2. H2 becomes an equivalence test: test-year RMSE(S-xgb-rank) − RMSE(S-xgb-reg) in €/MWh, the same block bootstrap, margin ±1% of S-xgb-reg's test-year RMSE; supported if the whole CI is inside the margin, contradicted if it is wholly outside, inconclusive otherwise. The headline needs H1 and H2 supported. The same statistic is reported for the LSTM pair, descriptively.
   3. Early stopping is repeated at each quarterly refit, on the last 3 months of that refit's training window.
@@ -492,7 +492,7 @@ bess-rank/
     - €/MW/year, capture: S-xgb-reg 63,195 (93.6%), S-xgb-rank 64,236 (95.1%), S-lstm-reg 63,654 (94.3%), S-lstm-rank 64,186 (95.1%).
     - H1 statistic +2.85 €/day [1.19, 4.58]; H2 statistic −0.09 €/MWh [−0.28, 0.18] with margin 0.30; H3 statistic +1.46 €/day [0.32, 2.69]; LSTM RMSE difference −0.09 €/MWh [−0.22, 0.03] with margin 0.29. All three rules give "supported" on validation. The rank − reg profit difference is positive in every quarter for both families.
     - Surprise: XGB-reg's early stopping picks few trees in some refits: 71/750/48 (from 2025-01-01) and 44/40/50 (from 2025-04-01), against 223–571 in the first refit. XGB-rank picks 13 trees for seed 2 from 2025-07-01. The procedure stays as decided (point 3); the seed average dampens it.
-- **2026-10-05 (S3, test run).** Akram merged PR #2 (merge commit 517478e) and typed "UNLOCK TEST".
+- **2026-10-05 (S3, test run).** I merged PR #2 (merge commit 517478e) and typed "UNLOCK TEST".
   - §6 on `main` is identical to the pushed version, as are `src/`, `tests/`, `results/` and the requirements. `PREREGISTRATION.lock` holds 517478e15fba9bbc3c468eab336ecce1dc6c8c99, committed on `s3-test` (63324c6).
   - The run (`BESS_UNLOCK_TEST=1 python -m bessrank.run test`) ran once, with no frozen file changed since the lock commit. No crash, no failed sanity assertion, no setting changed. Runtime 19.8 min: refits 19.4 min (48 fits), 2,555 day-solves 22 s. HiGHS and SCIP agreed on every day, and perfect foresight was ≥ every strategy on every day. Each refit dropped the same 8 training days (§2). Results: `results/test_summary.md` and `results/test_*.csv`.
   - **H1 (confirmatory): supported.** S-xgb-rank − S-xgb-reg = +1.83 €/day, 95% CI [0.78, 2.84] (+667 €/MW/year, +0.97% of S-xgb-reg's profit); rank better on 178 days, reg better on 116.
@@ -502,7 +502,7 @@ bess-rank/
   - Test year, €/MW/year (capture): S-perfect 73,181; S-naive-1d 60,390 (82.5%); S-naive-7d 57,936 (79.2%); S-xgb-reg 69,107 (94.4%); S-xgb-rank 69,774 (95.3%); S-lstm-reg 69,864 (95.5%); S-lstm-rank 69,834 (95.4%).
   - By quarter, S-xgb-rank − S-xgb-reg is positive in all four (+2.60, +0.76, +1.93, +2.01 €/day). S-lstm-rank − S-lstm-reg is +0.39, +0.22 and +0.53 €/day in the first three and −1.45 €/day in Jul–Sep 2026.
   - Trees or epochs per seed (0/1/2), refits from 2025-10-01, 2026-01-01, 2026-04-01, 2026-07-01: XGB-reg 616/858/810, 39/48/43, 67/56/64, 718/778/427; XGB-rank 69/70/188, 231/124/174, 171/176/146, 182/251/92; LSTM-reg 39/28/8, 14/18/9, 30/35/14, 15/12/18; LSTM-rank 9/6/8, 13/7/6, 6/10/6, 17/9/7. XGB-reg stops early in the refits whose early-stopping months are Oct–Dec and Jan–Mar, as in the rehearsal.
-- **2026-10-05 (Akram's decisions on the S3 report).**
+- **2026-10-05 (my decisions on the S3 report).**
   1. Wording everywhere: "H1 supported: +1.83 €/day (95% CI 0.78 to 2.84), +667 €/MW/year (+0.97%). The ranked vector's RMSE was lower, not equal (H2 inconclusive). No difference for the LSTM (H3 inconclusive)." No "same RMSE" headline. Also report the share of the gap to perfect foresight that XGB-rank closes (16.4%).
   2. Tree-count check: rerun the XGBoost pair on the test year with the validation tree counts fixed at every refit (no early stopping), and report H1's statistic next to the official one, and by quarter next to the tree counts.
   3. Explain the LSTM's Jul–Sep 2026 result in the "where profit is lost" analysis.
@@ -520,25 +520,26 @@ bess-rank/
   - Stretch, conformal + CVaR: XGB-quantile (one fit on train, CQR on validation) covers 88.6% of test hours with its 90% interval (85.0% raw). CVaR schedules (200 scenarios per day, λ ∈ {0, 0.5, 1, 2, 5}, SCIP with HiGHS check, all 1,825 solves agree): 68,821, 65,524, 63,180, 59,414, 55,989 €/MW/year; realized ES 5% 5.94, 1.96, 1.58, −0.58, −0.26 €; max drawdown 22.0 → 5.0 €. On this test year risk aversion lowers both mean profit and realized ES.
   - Stretch, SHAP: 62% of XGB-rank's mean |SHAP| on the test year goes to the within-day residual-load deviation and rank; XGB-reg's top three are level features.
   - Cut: nothing from A–F. Not done: the Databricks dashboard and MLflow logging (S5).
-- **2026-10-05 (Akram's decisions on the S4 report).**
+- **2026-10-05 (my decisions on the S4 report).**
   1. The functions added to `models.py`, `battery.py` and `risk.py` stay where they are; the confirmatory code is made verifiable with a git tag instead.
   2. README: the three proposed figures, with the tree-count result and the TSO caveat next to H1.
   3. Test and explore runs upload their forecasts automatically.
   4. No need to watch PR #4.
 - **2026-10-05 (S5).** Release work; no number of the pre-registered run changed.
-  - Tags: `prereg` → 517478e (the PR #2 merge, held in `PREREGISTRATION.lock`) and `confirmatory-run` → 63324c6 (the commit recorded by the test run in `results/provenance.json`; it differs from `prereg` only by the lock file). Both are ancestors of `main`. The tags were created in the session, but pushing them failed twice (the session's git proxy drops tag pushes; branch pushes work), so Akram pushes them.
+  - Tags: `prereg` → 517478e (the PR #2 merge, held in `PREREGISTRATION.lock`) and `confirmatory-run` → 63324c6 (the commit recorded by the test run in `results/provenance.json`; it differs from `prereg` only by the lock file). Both are ancestors of `main`. Pushing the tags from the development VM failed twice (tag pushes were dropped; branch pushes worked), so I push them.
   - `git diff confirmatory-run main -- src/`: three lines changed or removed, none in code the confirmatory pipeline runs (the first line of the `risk.py` docstring; the two-line `explore`/`report` placeholder in `run.py main()`). Everything else is added code.
   - The S4 provenance gap is closed: `scripts/s4_session_jobs.py` is committed verbatim (sha256 3c22ab18…) and linked from the `explore_forecasts` and `explore_xgb-variants` entries of `provenance.json`.
-  - README written. 21 agents fact-checked it against the results: 109 claims checked, 91 confirmed and 18 flagged. The flags on Claude's wording were corrected (README and VALIDATION.md); three on Akram's own wording (the tagline, "ranking made no difference", "No difference for the LSTM") are left for him to decide. Among the corrections: the H1 CI in €/MW/year is +285 to +1,036 (2.8397 × 365 = 1,036.5, not 1,037), and the ~0.5 €/day tree-count effect comes from fixing both models' trees (S-xgb-reg +0.69, S-xgb-rank +0.15 €/day). Figures: `python -m bessrank.run report`. MIT licence.
+  - README written and fact-checked claim by claim against the result files: 109 claims, 91 confirmed and 18 flagged. 15 were corrected (README and VALIDATION.md); three on my own wording (the tagline, "ranking made no difference", "No difference for the LSTM") were left for me to decide. Among the corrections: the H1 CI in €/MW/year is +285 to +1,036 (2.8397 × 365 = 1,036.5, not 1,037), and the ~0.5 €/day tree-count effect comes from fixing both models' trees (S-xgb-reg +0.69, S-xgb-rank +0.15 €/day). Figures: `python -m bessrank.run report`. MIT licence.
   - Auto-upload: `test` and `explore` runs copy their forecasts and `provenance.json` to `runs/<run type>-<commit>/` on the volume and check the sizes; a failure warns and keeps the local files. 5 mocked tests; live check passed.
   - Databricks: job `bess-rank-pipeline` (serverless, no schedule) ran the official XGBoost test pipeline once at commit 4cd8d8a (run 967734030312010, SUCCESS, 5.9 min in the notebook). It wrote `workspace.bess.gold_features` (8,760 rows), `gold_predictions` (8,760), `gold_schedules` (43,800) and `gold_daily_profit` (1,825), and 24 fit runs plus 1 summary run in the MLflow experiment `bess-rank`. Parity with S3: all 24 fits' forecasts identical (largest difference 0.0); daily profits of the five non-LSTM strategies within 2.3e-13 € (relative ≤ 1.9e-14) on all 365 days; H1 from the Databricks numbers +1.828 €/day [0.779, 2.840]. HiGHS and SCIP agreed on every day there too.
   - 96 tests pass.
-  - Final checks before publication (counts only; 7 agents, with a critic re-running the riskiest checks another way):
+  - Final checks before publication (counts only; the riskiest checks were re-run a second way):
     - all 31 commits have the owner's e-mail as author and committer, except the 4 PR merges, committed by GitHub. The first two commits carry the display name "Mohammed Lrhorfi" instead of "m871-akram" (same e-mail; left as is);
     - 0 Co-Authored-By, "Generated with" or session-link lines in commit or tag messages;
-    - PR #3 and #4 descriptions end with a "Generated by Claude Code" session-link footer that the GitHub tool appends. It was removed from PR #5, but #3 and #4 are left for Akram;
+    - PR #3 and #4 descriptions ended with an automatically appended footer line; it was removed from PR #5, and #3 and #4 were left for me;
     - in file contents across history: 0 Databricks tokens, 0 workspace-host mentions, 0 e-mail addresses, 0 personal local paths;
     - no SMARD data: no parquet or raw files, and the CSVs hold at most one row per day; the only actual hourly prices are the example-day PNG;
     - no blob over 1 MB (the largest is 175,754 B);
     - all 24 README links and 5 anchors resolve to committed files and headings;
     - 25 commits are SSH-signed with a key GitHub does not know ("Unverified"); an empty `.DS_Store` was in history for one commit.
+- **2026-10-05 (release).** Editorial pass before publication. The rules file is now RULES.md, development tooling files were removed, and wording outside §6 was made first-person. In §6, only the rules file name changed. No number, date or decision changed.

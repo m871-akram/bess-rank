@@ -4,7 +4,7 @@ notebooks/01_pipeline.py.
 It reruns the pre-registered test steps for the XGBoost pair with the S3 code paths: quarterly
 refits (backtest.quarters, models.training_rows, models.fit_predict with the frozen
 hyperparameters, seeds 0-2), the "-rank" reassignment, and every day solved by HiGHS and
-re-checked by SCIP (CLAUDE.md rule 7). The LSTM pair stays in the VM (torch is not installed
+re-checked by SCIP (RULES.md rule 7). The LSTM pair stays in the VM (torch is not installed
 on serverless), so the five non-LSTM strategies are computed here.
 
 Outputs: the Delta tables workspace.bess.gold_* (each row carries the git commit), one MLflow
@@ -91,7 +91,7 @@ def xgb_strategy_vectors(hourly, forecasts, first_day, last_day):
 def schedules_and_profits(vectors, names=DBX_STRATEGIES):
     """Solve every day for every strategy (HiGHS, re-checked by SCIP) and settle at the actual
     prices. Returns (hourly schedules, daily profit), both long format. Stops on a solver
-    mismatch or if a strategy beats perfect foresight (CLAUDE.md rule 7)."""
+    mismatch or if a strategy beats perfect foresight (RULES.md rule 7)."""
     bat = battery.DEFAULT_BATTERY
     hourly_rows, daily_rows = [], []
     for day, hours in vectors.groupby("delivery_day", sort=True):
@@ -116,7 +116,7 @@ def schedules_and_profits(vectors, names=DBX_STRATEGIES):
 # --- Parity with the S3 VM run -----------------------------------------------------------------
 def parity(daily, forecasts, official_daily, vm_forecasts):
     """Daily profit of the five strategies against results/test_daily_profit.csv (relative rule
-    of CLAUDE.md rule 7: |a - b| <= 1e-6 max(1, |a|, |b|)), and the forecasts against the VM's."""
+    of RULES.md rule 7: |a - b| <= 1e-6 max(1, |a|, |b|)), and the forecasts against the VM's."""
     wide = daily.pivot(index="delivery_day", columns="strategy", values="profit_eur").reset_index()
     official = official_daily.copy()
     official["delivery_day"] = pd.to_datetime(official["delivery_day"]).dt.date
