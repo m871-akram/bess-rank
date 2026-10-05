@@ -22,5 +22,5 @@ __pycache__/
 # Background job logs (session-local)
 logs/
 
-plan.md
-rule.md
+PLAN.md
+RULE.md
