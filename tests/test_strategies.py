@@ -85,3 +85,17 @@ def test_block_bootstrap_is_reproducible_and_centred():
     m2, lo2, hi2 = evaluate.block_bootstrap_ci(x, n_resamples=2000)
     assert (m1, lo1, hi1) == (m2, lo2, hi2)
     assert lo1 < m1 < hi1 and lo1 > 1.5 and hi1 < 2.5
+
+
+def test_rmse_difference_ci():
+    """RMSE(a) - RMSE(b) recomputed on each block resample of days (statistic of H2)."""
+    rng = np.random.default_rng(4)
+    n_hours = np.full(365, 24)
+    sse_b = rng.uniform(1000, 5000, 365)
+    point, lo, hi = evaluate.rmse_difference_ci(sse_b, sse_b, n_hours, n_resamples=500)
+    assert (point, lo, hi) == (0.0, 0.0, 0.0)
+    # a's squared errors are 21% larger every day, so its RMSE is exactly 10% larger
+    point, lo, hi = evaluate.rmse_difference_ci(1.21 * sse_b, sse_b, n_hours, n_resamples=500)
+    rmse_b = np.sqrt(sse_b.sum() / n_hours.sum())
+    assert point == pytest.approx(0.1 * rmse_b)
+    assert 0 < lo < point < hi

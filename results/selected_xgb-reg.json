@@ -1,0 +1,24 @@
+{
+  "model": "xgb-reg",
+  "config": 11,
+  "params": {
+    "max_depth": 7,
+    "learning_rate": 0.03853940667089836,
+    "min_child_weight": 4,
+    "subsample": 0.9185297081149177,
+    "colsample_bytree": 0.6153211044968737,
+    "reg_lambda": 0.1270698748322714
+  },
+  "seeds": [
+    0,
+    1,
+    2
+  ],
+  "selection_metric": "rmse_eur_mwh",
+  "validation_value": 30.641271201340007,
+  "n_iter_per_seed": [
+    467,
+    223,
+    571
+  ]
+}

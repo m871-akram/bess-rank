@@ -18,8 +18,8 @@ Which one makes the battery more money?
 
 | Model | Price objective | Rank objective |
 |---|---|---|
-| XGBoost | XGB-reg | XGB-rank (primary test) |
-| Bidirectional LSTM | LSTM-reg | LSTM-rank (second test) |
+| XGBoost | XGB-reg | XGB-rank (H1, confirmatory test) |
+| Bidirectional LSTM | LSTM-reg | LSTM-rank (H3, secondary test) |
 
 **Why now**
 - Germany recorded 457 hours of negative day-ahead prices in 2024 and 573 in 2025 (SMARD).
@@ -42,7 +42,7 @@ Which one makes the battery more money?
 - a bank-style model validation report;
 - if time allows, conformal quantile forecasts feeding a CVaR-constrained schedule solved with OR-Tools.
 
-**Possible headline** (only if supported by §6): "Same forecast values, different order: the ranked strategy earns X% more on the test year, despite a higher RMSE."
+**Possible headline** (only if H1 and H2 are supported, §6): "Same forecast values, different order: the ranked strategy earns X% more on the test year, at the same RMSE (within 1%)."
 
 ---
 
@@ -76,7 +76,7 @@ Neighbour prices (FR 254, NL 256, AT 4170) are optional; add them only if Day 1 
 - Forecast residual load = 411 − (wind + PV). Check once that it equals 4362.
 
 **Periods**
-- **Train:** 2019-01-01 → 2024-09-30. Data from 2018-10-01 feed only the lagged features (start moved by the missing-value rules below).
+- **Train:** 2019-01-01 → 2024-09-30, without the 8 gap days listed under Missing values. Data from 2018-10-01 to 2018-12-31 feed only the lagged features of the first training days.
 - **Validation:** 2024-10-01 → 2025-09-30.
 - **Test (locked):** 2025-10-01 → 2026-09-30.
 
@@ -91,8 +91,8 @@ Neighbour prices (FR 254, NL 256, AT 4170) are optional; add them only if Day 1 
 
 **Missing values** (decided by Akram, 2026-10-05)
 - Gaps of 1–2 hours in any series: linear interpolation in UTC time from the neighbouring hours of the same series. This covers the 00:00 hour that SMARD misses on 25-hour days (123, 125, 411), including 2025-10-26. Every filled value is flagged.
-- The training start moves to the first day after the 2018 run-in of the load forecast 411 (21 gaps of 1–4 days, 2018-10-02 to 2018-12-31): 2019-01-01.
-- Any later training day with a gap longer than 2 hours in a feature series is dropped from training.
+- Training starts on **2019-01-01**, after the 2018 run-in of the load forecast 411 (21 gaps of 1–4 days, 2018-10-02 to 2018-12-31). It does not move later because of the gaps after that date.
+- From 2019-01-01 on, a training day with a gap longer than 2 hours in any series used by a feature or label (so a value still missing after the 1–2-hour filling) is dropped from training, and only that day. With the data downloaded in S0 these are 8 days: 2022-02-22, 2022-03-24, 2022-07-20, 2022-07-21, 2022-12-21, 2022-12-22, 2023-03-13 and 2023-08-31 (2,092 training days remain of 2,100). Test-period refits apply the same rule to their windows.
 - Validation and test days are never dropped. XGBoost gets NaN (native missing-value handling); the LSTM gets the training-window median for that hour.
 - The counts are in `results/qa_data.md` and `results/features_summary.json` (test period: counts only).
 
@@ -138,22 +138,23 @@ Not used: fuel and carbon prices (no free, clean source). Lagged prices carry th
 
 All models use the same features and training windows, and 3 seeds per final configuration. Each final forecast averages the 3 seeds: mean prediction for price models, mean score for rankers.
 
+- **Version:** XGBoost 3.2.0, the newest the VM's package index offers (the 3.4.1 prototype check in §12 ran elsewhere). All settings below are checked on 3.2.0.
 - **XGB-reg.**
   - Target: hourly price (€/MWh). Objective `reg:squarederror`, `tree_method="hist"`.
 - **XGB-rank.**
   - One query group per delivery day (`qid` = day; rows sorted by day, then hour).
   - Label: dense within-day rank of the actual price, 0 for the cheapest; tied prices share a label.
-  - Objective `rank:pairwise`, with `lambdarank_pair_method="mean"` and enough `lambdarank_num_pair_per_sample` that every pair of a day is used.
-  - Prototype check: XGBoost 3.4 accepts this setup.
+  - Objective `rank:pairwise` with every pair of hours of a day that have different labels, and the plain logistic loss log(1 + exp(−(s_i − s_j))) summed over those pairs (the LSTM-rank loss).
+  - In XGBoost 3.2.0 this is `lambdarank_pair_method="topk"` with `lambdarank_num_pair_per_sample=25` (every hour is in the top 25, so all pairs are built), `lambdarank_normalization=False` and `lambdarank_score_normalization=False`. `tests/test_models.py` checks it against a hand-written gradient. (S2 finding: `"mean"` samples pairs at random, so it cannot guarantee every pair; the v2 text asked for `"mean"`.)
 - **LSTM-reg and LSTM-rank.**
   - **Input:** each sample is one delivery day, a sequence of up to 25 hourly feature vectors with the same features as XGBoost.
     - Features are standardised with training-window statistics only.
     - Days are padded to 25 hours, with a mask.
-  - **Architecture:** bidirectional LSTM (default 2 layers, 64 units, dropout 0.1), then a linear head that outputs one value per hour. Bidirectional means each hour's output sees the whole day.
+  - **Architecture:** bidirectional LSTM (default 2 layers, 64 units, dropout 0.1 between layers and before the head), then a linear head that outputs one value per hour. Bidirectional means each hour's output sees the whole day. Sequences are packed, so padding never reaches a real hour (`tests/test_lstm.py`).
   - **Losses:**
     - LSTM-reg: masked MSE on the standardised price.
     - LSTM-rank: pairwise logistic loss over every pair of hours with different labels, log(1 + exp(−(s_i − s_j))), the analogue of XGBoost's objective.
-  - **Training:** Adam (lr 1e-3), 32 days per batch. Early stopping on the last 3 months of the training window (patience 10, at most 100 epochs). CPU.
+  - **Training:** Adam (lr 1e-3), 32 days per batch. Early stopping on the last 3 months of the training window (patience 10, at most 100 epochs) on the selection metric: RMSE for LSTM-reg, mean within-day Spearman ρ for LSTM-rank. CPU.
 - **XGB-quantile** (stretch, §8).
   - Objective `reg:quantileerror`, with 19 quantiles from 0.05 to 0.95.
   - Calibrated by conformalized quantile regression (CQR) on the validation year.
@@ -208,30 +209,79 @@ If the ranker agrees with the price model's order, the two strategies are identi
 - **Value:** profit (€ per MW per year), daily profit, capture rate (profit ÷ S-perfect profit).
 - **Forecast:** price RMSE and MAE; within-day Spearman ρ; hit rate for the 2 cheapest and the 2 most expensive hours.
 - **Risk** (every strategy):
-  - VaR 5% (the 5th percentile of daily profit);
-  - Expected Shortfall 5% (mean of the worst 5% of days);
+  - VaR 5%, reported as "P5 of daily profit": the 5th percentile of daily profit;
+  - Expected Shortfall 5%, reported as "mean of the worst 5% of days": the mean daily profit of the worst ⌈5% × n⌉ days (19 of 365);
+  - both are profit levels, not losses: a negative value is a loss. Every table labels them this way;
   - maximum drawdown of cumulative profit;
   - share of losing days.
 
 ---
 
-## 6. Pre-registration (draft; finalise after validation, before unlocking the test)
+## 6. Pre-registration (final; locked when Akram merges PR #2)
 
-**Tests.** Each uses the mean daily profit difference, with a 95% CI from a moving-block bootstrap: 7-day blocks, 10,000 resamples, seed 20261004. Each is **supported** if the CI's lower bound > 0, **contradicted** if the upper bound < 0, and **inconclusive** otherwise.
-- **H1 (primary).** S-xgb-rank earns more than S-xgb-reg on the test year.
-- **H2.** S-xgb-rank's price vector has a higher RMSE than S-xgb-reg's, with the same bootstrap CI above 0. The headline "worse RMSE, more profit" needs both H1 and H2.
-- **H3.** S-lstm-rank earns more than S-lstm-reg.
+Finalised on 2026-10-05 after the validation year and before any test-period value was loaded. The validation results behind it are in `results/validation_summary.md` (exploratory). The changes from the draft are listed at the end of this section.
 
-**Reported for every strategy:** annual profit, capture rate, RMSE and MAE, Spearman ρ, hit rates, and the risk metrics.
+**Test year.** Delivery days 2025-10-01 → 2026-09-30 (365 days). The hourly price is the mean of the four quarter-hour prices (§2). No test day is dropped; missing features follow §2.
 
-**Test protocol**
-- Hyperparameters are fixed from validation.
-- Every model is refitted at the start of each test quarter (2025-10-01, 2026-01-01, 2026-04-01, 2026-07-01), on all data up to the day before.
-- 3 seeds, averaged. Run once.
+**Bootstrap.** Every CI below is the 95% percentile interval of a moving-block bootstrap over the 365 test days: 7-day blocks, 10,000 resamples, seed 20261004 (`evaluate.block_indices`). Every statistic is computed on the same resampled days. Each hypothesis is **supported**, **contradicted** or **inconclusive** by the rule given with it.
+
+**H1 is the only confirmatory test. H2 and H3 are secondary:** reported without multiplicity adjustment and labelled as secondary.
+
+- **H1 (confirmatory).** S-xgb-rank earns more than S-xgb-reg.
+  - Statistic: mean daily profit difference over the test year, S-xgb-rank − S-xgb-reg (€/day).
+  - Supported if the CI's lower bound > 0, contradicted if its upper bound < 0, inconclusive otherwise.
+- **H2 (secondary): equivalence of RMSE.** Reassigning XGB-reg's values in XGB-rank's order leaves the price RMSE within ±1%.
+  - Statistic: test-year RMSE(S-xgb-rank) − RMSE(S-xgb-reg), in €/MWh. Each RMSE is pooled over all test hours; each bootstrap resample recomputes both RMSEs over the hours of its days (`evaluate.rmse_difference_ci`).
+  - Margin: m = 1% of RMSE(S-xgb-reg) over the test year, computed once on the whole year (not per resample).
+  - Supported if the whole CI lies inside the margin (−m < lower bound and upper bound < m); contradicted if the whole CI lies outside it (lower bound > m, or upper bound < −m); inconclusive otherwise.
+- **H3 (secondary).** S-lstm-rank earns more than S-lstm-reg. Same statistic and rule as H1.
+- **Headline.** "Same forecast values, different order: X% more profit at the same RMSE" (§1) needs H1 and H2 both supported. Otherwise the headline is not used.
+- **LSTM RMSE (descriptive).** The H2 statistic for the LSTM pair, RMSE(S-lstm-rank) − RMSE(S-lstm-reg), with its CI and the 1% margin of RMSE(S-lstm-reg), is reported descriptively, without a verdict.
+
+**Reported for every strategy:** annual profit (€/MW/year), capture rate, RMSE and MAE, within-day Spearman ρ, hit rates for the 2 cheapest and 2 most expensive hours, and the risk metrics: VaR 5% labelled "P5 of daily profit", ES 5% labelled "mean of the worst 5% of days" (both profit levels, negative = loss), maximum drawdown and share of losing days. Also a quarterly breakdown (descriptive) and the runtime.
+
+**Results are reported whatever they are**, including inconclusive or contradicted verdicts, in PR #3, `VALIDATION.md` and the README. No setting changes after a test number has been seen.
+
+**Frozen setup**
+- **Code.** The test run uses the code at the commit that merges PR #2 (this section): `python -m bessrank.run test` (`src/bessrank/backtest.py`). It refuses to start if `src/`, `requirements.txt`, `pyproject.toml` or `results/selected_*.json` differ from the commit in `PREREGISTRATION.lock`, and it never overwrites its results.
+- **Features.** The 42 features of `features.py`, TSO generation forecasts included (the run without them is §8, exploratory).
+- **Objectives and fixed settings:** §4 at that commit. XGB-rank uses every within-day pair of hours with different labels and the plain logistic loss, with no normalisation: `rank:pairwise`, `lambdarank_pair_method="topk"`, `lambdarank_num_pair_per_sample=25`, `lambdarank_normalization=False`, `lambdarank_score_normalization=False`. `tests/test_models.py` checks this objective against a hand-written gradient and stays in the test suite.
+- **Hyperparameters**, from the validation search (§7). The exact values are in `results/selected_*.json`; this table rounds them for display:
+
+| Model | Configuration | Validation (3-seed average) |
+|---|---|---|
+| XGB-reg | max_depth 7, learning_rate 0.0385, min_child_weight 4, subsample 0.919, colsample_bytree 0.615, reg_lambda 0.127 | RMSE 30.64 €/MWh |
+| XGB-rank | max_depth 9, learning_rate 0.1327, min_child_weight 4, subsample 0.817, colsample_bytree 0.650, reg_lambda 0.700 | Spearman ρ 0.9445 |
+| LSTM-reg | 128 units × 1 layer | RMSE 29.38 €/MWh |
+| LSTM-rank | 128 units × 2 layers | Spearman ρ 0.9479 |
+
+- **Refits** at the start of each test quarter: 2025-10-01, 2026-01-01, 2026-04-01 and 2026-07-01. Each uses every training day from 2019-01-01 to the day before the quarter, the validation year included, with the §2 day-dropping rule. A quarter's days are forecast only by that quarter's models.
+- **Fit procedure at every refit**, for each model and seed (the §7 procedure): early stopping is repeated at each refit, on the last 3 months of that refit's training window (XGBoost: at most 5,000 trees, 50 trees of patience; LSTM: at most 100 epochs, patience 10; metric RMSE for price models, within-day Spearman ρ for rankers). Then a refit on the whole window with the number of trees or epochs found.
+- **Seeds** 0, 1 and 2. The forecast is the mean prediction (price models) or the mean score (rankers).
+- **Strategies, battery, solvers and settlement:** §5. Both solvers run on every day. The run stops if a sanity assertion fails (CLAUDE.md rule 7).
+
+**Run once.** The test pipeline runs once. If it crashes or a sanity assertion fails, it stops, and Akram is told before any code changes. Any fix after the PR #2 merge commit is a dated amendment in §12: it names the fix commit and reports the numbers before and after the fix (if the first run stopped before writing a result, the amendment says where it stopped). The amended run writes `test_amended_*` files next to the original ones, which are never overwritten or deleted. Any other re-run or analysis after the test results are written is exploratory and labelled so.
+
+**Validation evidence** (exploratory, not a test; one fit on data to 2024-09-30):
+- S-xgb-rank − S-xgb-reg = +2.06 €/day, 95% CI [0.65, 3.45].
+- S-lstm-rank − S-lstm-reg = +1.72 €/day, 95% CI [0.71, 2.87].
+- RMSE differences, rank − reg: −0.05 €/MWh [−0.22, 0.20] (XGB) and −0.11 €/MWh [−0.23, −0.01] (LSTM).
+- The CI half-widths, about 1.4 and 1.1 €/day, give a rough idea of the smallest profit difference the test year can detect.
+- The validation-year 1% margins would be about 0.31 €/MWh (XGB) and 0.29 €/MWh (LSTM).
+
+**Changes from the draft**
+1. **H2 is now an equivalence test** (S2 proposal, decided by Akram on 2026-10-05). The draft H2 said the rank vector's RMSE is *higher*. On validation it was slightly lower for both families, with the LSTM CI entirely below 0, so the draft H2 would most likely end inconclusive or contradicted, and the "despite a higher RMSE" headline is not what validation shows. What validation does show is profit moving while RMSE barely does. The 1% margin is below the seed-to-seed RMSE spread of the selected XGB-reg configuration on validation (30.59–31.09 €/MWh, 1.6%), so a difference inside it is one an RMSE-based model selection could not see.
+2. H2's statistic, margin and rule are defined exactly, and every statistic uses the same resampled days.
+3. H1 is the only confirmatory test; H2 and H3 are secondary (the draft called H1 "primary").
+4. Hyperparameters are frozen in the table above.
+5. Early stopping is repeated at each quarterly refit, on the last 3 months of that refit's window (the draft said only "hyperparameters are fixed").
+6. The XGB-rank objective is stated exactly (§4): every pair, no normalisation. The draft's `"mean"` pair method samples pairs at random.
+7. The code is frozen at the PR #2 merge commit, and the test pipeline (`backtest.py`) is part of it. It was rehearsed on the validation year before the lock (§12, S3).
+8. "Run once" now says what happens after a crash or a later fix, and results are reported whatever they are.
 
 **Lock procedure**
-1. Akram merges the PR containing the final version of this section.
-2. `PREREGISTRATION.lock` is created with that commit hash.
+1. Akram merges PR #2, which contains the final version of this section.
+2. `PREREGISTRATION.lock` is created with that merge commit hash.
 3. Only then may `BESS_UNLOCK_TEST=1` be used.
 
 Anything decided after the lock is a dated amendment in §12 and is labelled exploratory.
@@ -241,7 +291,7 @@ Anything decided after the lock is a dated amendment in §12 and is labelled exp
 ## 7. Validation protocol (2024-10-01 → 2025-09-30; budget sized for the sprint)
 
 - Fit on train, predict the validation year.
-- Early stopping on the last 3 months of the training window, then a refit on the full window with the chosen number of trees or epochs.
+- Early stopping on the last 3 months of the training window, then a refit on the full window with the chosen number of trees or epochs. XGBoost: at most 5,000 trees, stop after 50 trees without improvement, on RMSE for XGB-reg and mean within-day Spearman ρ for XGB-rank.
 - **XGBoost:** random search over 15 configurations per model, seed 0. The best 3 are re-run with 3 seeds, and the best is kept.
   - Search space:
     - max_depth 3–10;
@@ -321,12 +371,13 @@ bess-rank/
     lstm.py        BiLSTM, both losses, training loop
     battery.py     daily MILP (scipy) + OR-Tools cross-check + CVaR program
     strategies.py  price vectors per strategy (including the "-rank" reassignment)
+    backtest.py    test run (§6): quarterly refits, the 7 strategies, H1–H3; rehearsal on validation
     evaluate.py    profit, capture, forecast metrics, block bootstrap
     risk.py        VaR, ES, drawdown, PSI, conformal calibration
     databricks.py  minimal REST helpers (Files, Repos, Jobs)
     run.py         python -m bessrank.run {data,qa,features,validate,test,explore,report}
   notebooks/       01_pipeline.py (Databricks); analysis notebooks reading results/
-  tests/           test_lock, test_time, test_features, test_battery, test_strategies
+  tests/           test_lock, test_time, test_features, test_battery, test_strategies, test_models, test_lstm, test_backtest
   results/         small CSV / JSON / PNG outputs (committed)
   data/            never committed
 ```
@@ -409,3 +460,35 @@ bess-rank/
   - Features (S1): 42, of which 15 use TSO generation forecasts. Choices: lags look up the same wall-clock hour on D-k (25-hour days average their two 02:00 hours; 23-hour days get 02:00 = mean of 01:00 and 03:00); S-naive-1d/7d use the same mapping. The 28-day profile is the mean of each day's within-day z-scored prices over D-28..D-1. Daily lagged statistics are NaN if any hour is missing. Holidays are German national holidays only; a bridge day is a Monday before a Tuesday holiday or a Friday after a Thursday holiday. `test_features.py` recomputes features from the data visible at 11:00 on D-1 for 37 real days (DST days, gap neighbours, period edges, 30 random) and 6 synthetic days: identical values, exact equality.
   - Battery: both solvers run with a relative MIP gap of 0 (HiGHS defaults to 1e-4). Agreement check: |a − b| ≤ 1e-6 · max(1 EUR, |a|, |b|).
   - Validation year (2024-10-01 to 2025-09-30, 365 days; 1,095 solves, HiGHS and SCIP agreed on all; perfect ≥ every strategy on every day): S-perfect 67,519 EUR/MW/year, VaR5 35.72 and ES5 25.84 EUR/day; S-naive-1d 55,115 EUR/MW/year, capture 81.6%, VaR5 −2.58, ES5 −23.79 EUR/day, 5.5% losing days, RMSE 47.08 EUR/MWh, Spearman ρ 0.760; S-naive-7d 54,106 EUR/MW/year, capture 80.1%, VaR5 0.66, ES5 −19.93 EUR/day, 4.9% losing days, RMSE 60.45 EUR/MWh, ρ 0.781. Exploratory: naive-1d − naive-7d = 2.76 EUR/day, block-bootstrap 95% CI [−4.50, 9.81].
+- **2026-10-05 (Akram's decisions on the S1 report).**
+  1. The training start stays 2019-01-01, and only the 8 gap days are dropped. The earlier §2 wording ("the first day after the run-in") was ambiguous; §2 now states this rule exactly. The S1 numbers do not change.
+  2. torch is allowed (`download-r2.pytorch.org` now allowed).
+  3. Both S1 feature choices are kept: lags use the same wall-clock hour on DST days; holidays are German national holidays only.
+  4. XGBoost 3.2.0 is the version used; noted in §4.
+  5. VaR and ES stay percentiles of daily profit (negative = loss) and are labelled "P5 of daily profit" and "mean of the worst 5% of days" in every table (§5). The result columns are now `var5_p5_of_daily_profit_eur` and `es5_mean_of_worst5pct_days_eur`.
+- **2026-10-05 (S2).** Validation year only; the test lock stayed closed and no test-period value was loaded.
+  - Setup: PR #1 was still open at the start of the session, so `s2-models` branches from `s0-setup` and PR #2 targets it. torch 2.14.1+cpu installed (pip first stopped on a Debian-installed `blinker`; `pip install --ignore-installed blinker` fixed it).
+  - XGB-rank objective: in XGBoost 3.2.0, `lambdarank_pair_method="mean"` samples pairs at random (k = 24 and k = 1,000 give different models). `"topk"` with k = 25 and both normalisations off gives exactly the all-pairs logistic loss (gradient checked against numpy to 6e-8). §4 updated.
+  - LSTM check on 198 real training days (2023-10-01 to 2024-04-15, 64 units × 2 layers, 10 epochs): MSE 0.840 → 0.103 and pairwise loss 0.657 → 0.209 (standardised units). The 25-hour day 2023-10-29 and the 23-hour day 2024-03-31 get 25 and 23 real hours. `tests/test_lstm.py` checks padding invariance and both losses; 73 tests pass.
+  - Searches (§7, seed 0, then 3 seeds for the finalists; about 35 min on 4 vCPUs). Selected, 3-seed averages on validation: XGB-reg config 11 (RMSE 30.64 €/MWh), XGB-rank config 3 (ρ 0.9445), LSTM-reg 128×1 (RMSE 29.38 €/MWh), LSTM-rank 128×2 (ρ 0.9479). Configurations differ by about as much as seeds do (XGB-reg config 11: 30.59–31.09 €/MWh across seeds). LSTM early stopping picks few epochs (reg 11–18, rank 4–6).
+  - Three fits re-run from commit 0a887b4 reproduce the search predictions exactly (max |difference| 0.0); the search runs record `eb3d70c-dirty` in provenance because they started before that commit.
+  - Validation (365 days; 73 price vectors × 365 days solved by HiGHS and SCIP, all agree; perfect ≥ every vector on every day), €/MW/year and capture: S-perfect 67,519; S-naive-1d 55,115 (81.6%); S-naive-7d 54,106 (80.1%); S-xgb-reg 63,470 (94.0%); S-xgb-rank 64,223 (95.1%); S-lstm-reg 63,771 (94.4%); S-lstm-rank 64,399 (95.4%). Full table in `results/validation_summary.md`.
+  - Exploratory paired differences (validation): S-xgb-rank − S-xgb-reg +2.06 €/day [0.65, 3.45]; S-lstm-rank − S-lstm-reg +1.72 €/day [0.71, 2.87]. RMSE differences: −0.05 €/MWh [−0.22, 0.20] (XGB), −0.11 [−0.23, −0.01] (LSTM). Every XGB-rank fit (21) earns more than every XGB-reg fit, and every LSTM-rank fit (8) more than every LSTM-reg fit.
+  - §6 finalised (proposal for Akram): H2 turned into a 1%-equivalence test on RMSE, because validation shows no RMSE increase; hyperparameters frozen; refit procedure, H2 statistic and crash handling spelled out. §1 headline updated to match.
+  - MLflow: not attempted from the VM in S2 (the run results are in `results/`); left for S5 as agreed.
+- **2026-10-05 (Akram's decisions on the S2 report).**
+  1. Merge order as recommended: PR #1 merged; PR #2 now targets `main`.
+  2. H2 becomes an equivalence test: test-year RMSE(S-xgb-rank) − RMSE(S-xgb-reg) in €/MWh, the same block bootstrap, margin ±1% of S-xgb-reg's test-year RMSE; supported if the whole CI is inside the margin, contradicted if it is wholly outside, inconclusive otherwise. The headline needs H1 and H2 supported. The same statistic is reported for the LSTM pair, descriptively.
+  3. Early stopping is repeated at each quarterly refit, on the last 3 months of that refit's training window.
+  4. XGB-rank keeps all pairs with no normalisation (`topk`, k = 25), and its test stays.
+  5. §6 also states that H1 is the only confirmatory test (H2, H3 secondary), that the test run uses the code at the PR #2 merge commit with any later fix as a dated §12 amendment reporting numbers before and after, and that results are reported whatever they are.
+- **2026-10-05 (S3, before the lock).** Validation year only; the test lock stayed closed and no test-period value was loaded.
+  - §6 finalised with the decisions above.
+  - The `test` command did not exist yet, so the test pipeline was added to PR #2, so that the frozen commit contains it: `src/bessrank/backtest.py` and `python -m bessrank.run test [--rehearsal]`. It refits each quarter with 3 seeds (two fits side by side, 2 threads each, as in the S2 search), builds the 7 strategies, solves every day with HiGHS and SCIP, and writes the H1–H3 verdicts, the strategy table, the quarterly breakdown, the refits and the runtime to `results/<prefix>_*`. The real run refuses to start while locked, if `src/`, `requirements.txt`, `pyproject.toml` or `results/selected_*.json` differ from the lock commit, or if its results already exist. `--amendment` writes `test_amended_*` files instead. `tests/test_backtest.py` covers the verdict rules, the quarters and the lock (85 tests pass).
+  - Refactor without change of behaviour: the model, strategy and pair lists moved to `config.py`; `paired_differences` and `parallel_daily_profits` moved from `run.py` to `evaluate.py`. `parallel_daily_profits` now also checks perfect foresight across the worker chunks; `cmd_validate` already did. The validation outputs were not re-run, because the S2 predictions are not in this VM.
+  - **Rehearsal** (exploratory): the same pipeline on the validation year, with refits at 2024-10-01, 2025-01-01, 2025-04-01 and 2025-07-01 (`results/rehearsal_summary.md`; commit 0e9e258, launched with identical `src/` just before that commit).
+    - Runtime 14.1 min: refits 13.7 min (48 fits), 2,555 day-solves 22 s. HiGHS and SCIP agreed on every day, and perfect foresight was ≥ every strategy on every day.
+    - The first quarter's refits reproduce the S2 search exactly (trees or epochs per seed: XGB-reg 467/223/571, XGB-rank 83/88/151, LSTM-reg 14/18/11, LSTM-rank 4/4/6). S-perfect and the naive strategies equal the S2 numbers.
+    - €/MW/year, capture: S-xgb-reg 63,195 (93.6%), S-xgb-rank 64,236 (95.1%), S-lstm-reg 63,654 (94.3%), S-lstm-rank 64,186 (95.1%).
+    - H1 statistic +2.85 €/day [1.19, 4.58]; H2 statistic −0.09 €/MWh [−0.28, 0.18] with margin 0.30; H3 statistic +1.46 €/day [0.32, 2.69]; LSTM RMSE difference −0.09 €/MWh [−0.22, 0.03] with margin 0.29. All three rules give "supported" on validation. The rank − reg profit difference is positive in every quarter for both families.
+    - Surprise: XGB-reg's early stopping picks few trees in some refits: 71/750/48 (from 2025-01-01) and 44/40/50 (from 2025-04-01), against 223–571 in the first refit. XGB-rank picks 13 trees for seed 2 from 2025-07-01. The procedure stays as decided (point 3); the seed average dampens it.

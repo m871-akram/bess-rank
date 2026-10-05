@@ -18,3 +18,6 @@ __pycache__/
 
 # The pre-registration lock must stay tracked
 !PREREGISTRATION.lock
+
+# Background job logs (session-local)
+logs/

@@ -22,6 +22,10 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python -m bessrank.run data   # rebuild data/ from the Databricks volume or SMARD
 python -m bessrank.run qa     # write results/qa_data.md
+python -m bessrank.run features             # feature table (train + validation)
+python -m bessrank.run tune xgb-reg         # random search on the validation year; also
+                                            # xgb-rank, lstm-reg, lstm-rank (about 35 min in all)
+python -m bessrank.run validate             # all strategies, paired differences, config table
 pytest
 ```
 

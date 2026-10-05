@@ -6,8 +6,8 @@
     "first_day": "2018-10-01",
     "last_day": "2026-09-30",
     "rows": 70128,
-    "run_utc": "2026-10-05T06:50:48+00:00",
-    "git_commit": "84b472f2f96fbcd0f35713890b056f4f6c51f64e",
+    "run_utc": "2026-10-05T08:12:46+00:00",
+    "git_commit": "f1c3c8718a6f398a33b76369acce6f180376d5e4",
     "python": "3.11.15",
     "packages": {
       "pandas": "3.0.6",
@@ -19,7 +19,7 @@
       "ortools": "9.15.6755",
       "xgboost": "3.2.0",
       "scikit-learn": "1.9.1",
-      "torch": null,
+      "torch": "2.14.1+cpu",
       "matplotlib": "3.11.2",
       "mlflow": "3.16.1",
       "pytest": "9.1.1"
@@ -30,8 +30,8 @@
     "features": 42,
     "train_start": "2019-01-01",
     "train_days_dropped": 8,
-    "run_utc": "2026-10-05T06:50:50+00:00",
-    "git_commit": "84b472f2f96fbcd0f35713890b056f4f6c51f64e",
+    "run_utc": "2026-10-05T07:09:22+00:00",
+    "git_commit": "eb3d70cea6d23e382fd1541974fb65282c97377c-dirty",
     "python": "3.11.15",
     "packages": {
       "pandas": "3.0.6",
@@ -43,7 +43,7 @@
       "ortools": "9.15.6755",
       "xgboost": "3.2.0",
       "scikit-learn": "1.9.1",
-      "torch": null,
+      "torch": "2.14.1+cpu",
       "matplotlib": "3.11.2",
       "mlflow": "3.16.1",
       "pytest": "9.1.1"
@@ -53,12 +53,17 @@
     "strategies": [
       "S-perfect",
       "S-naive-1d",
-      "S-naive-7d"
+      "S-naive-7d",
+      "S-xgb-reg",
+      "S-xgb-rank",
+      "S-lstm-reg",
+      "S-lstm-rank"
     ],
     "days": 365,
-    "solver_cross_checks": 1095,
-    "run_utc": "2026-10-05T06:51:17+00:00",
-    "git_commit": "84b472f2f96fbcd0f35713890b056f4f6c51f64e",
+    "config_vectors": 66,
+    "solver_cross_checks": 26645,
+    "run_utc": "2026-10-05T07:51:59+00:00",
+    "git_commit": "0a887b45079596fdbd9c08c336993502486e2816-dirty",
     "python": "3.11.15",
     "packages": {
       "pandas": "3.0.6",
@@ -70,7 +75,151 @@
       "ortools": "9.15.6755",
       "xgboost": "3.2.0",
       "scikit-learn": "1.9.1",
-      "torch": null,
+      "torch": "2.14.1+cpu",
+      "matplotlib": "3.11.2",
+      "mlflow": "3.16.1",
+      "pytest": "9.1.1"
+    }
+  },
+  "tune_xgb-reg": {
+    "fits": 21,
+    "selected_config": 11,
+    "threads": 2,
+    "run_utc": "2026-10-05T07:22:41+00:00",
+    "git_commit": "eb3d70cea6d23e382fd1541974fb65282c97377c-dirty",
+    "python": "3.11.15",
+    "packages": {
+      "pandas": "3.0.6",
+      "numpy": "2.4.6",
+      "pyarrow": "25.0.1",
+      "requests": "2.34.2",
+      "holidays": "0.105",
+      "scipy": "1.17.1",
+      "ortools": "9.15.6755",
+      "xgboost": "3.2.0",
+      "scikit-learn": "1.9.1",
+      "torch": "2.14.1+cpu",
+      "matplotlib": "3.11.2",
+      "mlflow": "3.16.1",
+      "pytest": "9.1.1"
+    }
+  },
+  "tune_xgb-rank": {
+    "fits": 21,
+    "selected_config": 3,
+    "threads": 2,
+    "run_utc": "2026-10-05T07:25:13+00:00",
+    "git_commit": "eb3d70cea6d23e382fd1541974fb65282c97377c-dirty",
+    "python": "3.11.15",
+    "packages": {
+      "pandas": "3.0.6",
+      "numpy": "2.4.6",
+      "pyarrow": "25.0.1",
+      "requests": "2.34.2",
+      "holidays": "0.105",
+      "scipy": "1.17.1",
+      "ortools": "9.15.6755",
+      "xgboost": "3.2.0",
+      "scikit-learn": "1.9.1",
+      "torch": "2.14.1+cpu",
+      "matplotlib": "3.11.2",
+      "mlflow": "3.16.1",
+      "pytest": "9.1.1"
+    }
+  },
+  "tune_lstm-reg": {
+    "fits": 8,
+    "selected_config": 4,
+    "threads": 2,
+    "run_utc": "2026-10-05T07:31:55+00:00",
+    "git_commit": "eb3d70cea6d23e382fd1541974fb65282c97377c-dirty",
+    "python": "3.11.15",
+    "packages": {
+      "pandas": "3.0.6",
+      "numpy": "2.4.6",
+      "pyarrow": "25.0.1",
+      "requests": "2.34.2",
+      "holidays": "0.105",
+      "scipy": "1.17.1",
+      "ortools": "9.15.6755",
+      "xgboost": "3.2.0",
+      "scikit-learn": "1.9.1",
+      "torch": "2.14.1+cpu",
+      "matplotlib": "3.11.2",
+      "mlflow": "3.16.1",
+      "pytest": "9.1.1"
+    }
+  },
+  "tune_lstm-rank": {
+    "fits": 8,
+    "selected_config": 5,
+    "threads": 2,
+    "run_utc": "2026-10-05T07:46:11+00:00",
+    "git_commit": "eb3d70cea6d23e382fd1541974fb65282c97377c-dirty",
+    "python": "3.11.15",
+    "packages": {
+      "pandas": "3.0.6",
+      "numpy": "2.4.6",
+      "pyarrow": "25.0.1",
+      "requests": "2.34.2",
+      "holidays": "0.105",
+      "scipy": "1.17.1",
+      "ortools": "9.15.6755",
+      "xgboost": "3.2.0",
+      "scikit-learn": "1.9.1",
+      "torch": "2.14.1+cpu",
+      "matplotlib": "3.11.2",
+      "mlflow": "3.16.1",
+      "pytest": "9.1.1"
+    }
+  },
+  "rehearsal": {
+    "first_day": "2024-10-01",
+    "last_day": "2025-09-30",
+    "refit_days": [
+      "2024-10-01",
+      "2025-01-01",
+      "2025-04-01",
+      "2025-07-01"
+    ],
+    "days": 365,
+    "seeds": [
+      0,
+      1,
+      2
+    ],
+    "strategies": [
+      "S-perfect",
+      "S-naive-1d",
+      "S-naive-7d",
+      "S-xgb-reg",
+      "S-xgb-rank",
+      "S-lstm-reg",
+      "S-lstm-rank"
+    ],
+    "solver_cross_checks": 2555,
+    "preregistration_commit": null,
+    "frozen_files_changed_since_preregistration": [],
+    "runtime_seconds": {
+      "features_s": 0.8,
+      "refits_s": 822.9,
+      "solve_s": 22.2,
+      "total_s": 847.0
+    },
+    "run_utc": "2026-10-05T08:30:53+00:00",
+    "git_commit": "0e9e2586e05958d9b48fd453a9822e84f3f5eeb8",
+    "python": "3.11.15",
+    "packages": {
+      "pandas": "3.0.6",
+      "numpy": "2.4.6",
+      "pyarrow": "25.0.1",
+      "requests": "2.34.2",
+      "holidays": "0.105",
+      "scipy": "1.17.1",
+      "ortools": "9.15.6755",
+      "xgboost": "3.2.0",
+      "scikit-learn": "1.9.1",
+      "torch": "2.14.1+cpu",
       "matplotlib": "3.11.2",
       "mlflow": "3.16.1",
       "pytest": "9.1.1"
