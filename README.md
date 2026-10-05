@@ -203,18 +203,8 @@ the commit of every stage are in [`results/provenance.json`](results/provenance.
 - 15-minute prices from 2025-10-01 are averaged to hours.
 - One market and one test year.
 
-## Next steps
-
-- Train through the battery program itself with a decision-focused loss (e.g. SPO+), instead of
-  the pairwise ranking loss, which is only a proxy for the order that matters to the schedule.
-- Intraday markets and 15-minute products.
-- Other bidding zones and other years.
-
 ## Repository
 
-- [`PLAN.md`](PLAN.md): design, pre-registration (§6) and lab notebook (§12).
-- [`RULES.md`](RULES.md): the study's hard rules (test lock, no look-ahead, controlled
-  comparisons, sanity assertions, reproducibility).
 - [`VALIDATION.md`](VALIDATION.md): model validation report and every exploratory analysis.
 - [`src/bessrank/`](src/bessrank/): one module per stage; [`tests/`](tests/): the test suite.
 - [`results/`](results/): committed results (no SMARD data); [`results/explore/`](results/explore/)
@@ -223,7 +213,5 @@ the commit of every stage are in [`results/provenance.json`](results/provenance.
 ---
 
 Data: Bundesnetzagentur | SMARD.de
-
-Author: Akram M. Lrhorfi.
 
 Code: [MIT License](LICENSE).
