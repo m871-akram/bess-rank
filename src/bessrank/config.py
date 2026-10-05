@@ -43,6 +43,12 @@ SOC_START_MWH = 1.0  # 50%, also the required end-of-day level
 MAX_DISCHARGE_MWH_PER_DAY = 2.0  # at most one equivalent full cycle per day
 DEGRADATION_EUR_PER_MWH = 10.0  # charged on energy discharged
 
+# --- Models and strategies (PLAN.md §4, §5) ----------------------------------------------
+MODELS = ["xgb-reg", "xgb-rank", "lstm-reg", "lstm-rank"]
+STRATEGIES = ["S-perfect", "S-naive-1d", "S-naive-7d", "S-xgb-reg", "S-xgb-rank", "S-lstm-reg", "S-lstm-rank"]
+# Controlled comparisons: within each family only the within-day order differs (§5).
+PAIRS = [("S-xgb-rank", "S-xgb-reg"), ("S-lstm-rank", "S-lstm-reg")]
+
 # --- Randomness and uncertainty ---------------------------------------------------------
 SEEDS = (0, 1, 2)
 BOOTSTRAP_SEED = 20261004

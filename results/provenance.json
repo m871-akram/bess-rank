@@ -6,8 +6,8 @@
     "first_day": "2018-10-01",
     "last_day": "2026-09-30",
     "rows": 70128,
-    "run_utc": "2026-10-05T07:09:20+00:00",
-    "git_commit": "eb3d70cea6d23e382fd1541974fb65282c97377c",
+    "run_utc": "2026-10-05T08:12:46+00:00",
+    "git_commit": "f1c3c8718a6f398a33b76369acce6f180376d5e4",
     "python": "3.11.15",
     "packages": {
       "pandas": "3.0.6",

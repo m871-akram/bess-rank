@@ -10,6 +10,7 @@ from importlib import metadata
 import pandas as pd
 
 from bessrank import config
+from bessrank.config import MODELS, STRATEGIES
 
 PACKAGES = ["pandas", "numpy", "pyarrow", "requests", "holidays", "scipy", "ortools", "xgboost",
             "scikit-learn", "torch", "matplotlib", "mlflow", "pytest"]
@@ -120,9 +121,6 @@ def cmd_tune(args):
                                              "threads": models.N_THREADS})
 
 
-MODELS = ["xgb-reg", "xgb-rank", "lstm-reg", "lstm-rank"]
-STRATEGIES = ["S-perfect", "S-naive-1d", "S-naive-7d", "S-xgb-reg", "S-xgb-rank", "S-lstm-reg", "S-lstm-rank"]
-PAIRS = [("S-xgb-rank", "S-xgb-reg"), ("S-lstm-rank", "S-lstm-reg")]
 # Display labels: VaR and ES are profit levels, negative = loss (Akram, 2026-10-05).
 DISPLAY = {
     "profit_eur_per_mw_year": "Profit (EUR/MW/year)", "capture_rate": "Capture",
@@ -132,27 +130,6 @@ DISPLAY = {
     "es5_mean_of_worst5pct_days_eur": "ES 5%: mean of the worst 5% of days (EUR)",
     "losing_day_share": "Losing days", "max_drawdown_eur": "Max drawdown (EUR)",
 }
-
-
-def _profits_worker(job):
-    from bessrank import evaluate
-    vectors, names = job
-    return evaluate.daily_profits(vectors, names)
-
-
-def parallel_daily_profits(vectors, names, workers=4):
-    """evaluate.daily_profits for many price vectors, split over processes. Every day is still
-    solved by HiGHS and re-checked by SCIP (CLAUDE.md rule 7)."""
-    from concurrent.futures import ProcessPoolExecutor
-    chunks = [names[i::workers] for i in range(workers) if names[i::workers]]
-    keys = ["ts_utc", "delivery_day", "price"]
-    jobs = [(vectors[keys + chunk], chunk) for chunk in chunks]
-    with ProcessPoolExecutor(len(jobs)) as pool:
-        parts = list(pool.map(_profits_worker, jobs))
-    daily = parts[0]
-    for part in parts[1:]:
-        daily = daily.merge(part, on=["delivery_day", "n_hours"])
-    return daily[["delivery_day", "n_hours"] + names]
 
 
 def validation_vectors():
@@ -199,26 +176,6 @@ def config_table(vectors, daily):
     return pd.DataFrame(rows)
 
 
-def paired_differences(vectors, daily):
-    """Exploratory on validation: daily profit and RMSE differences, rank minus reg, with
-    moving-block bootstrap CIs (the statistics of H1-H3, PLAN.md §6)."""
-    from bessrank import evaluate
-    rows = []
-    sse = {s: ((vectors[s] - vectors["price"]) ** 2).groupby(vectors["delivery_day"]).sum() for s in STRATEGIES}
-    for a, b in PAIRS:
-        diff = daily[a] - daily[b]
-        mean, lo, hi = evaluate.block_bootstrap_ci(diff)
-        rmse, rlo, rhi = evaluate.rmse_difference_ci(sse[a].to_numpy(), sse[b].to_numpy(), daily["n_hours"].to_numpy())
-        same_vector = (vectors[a] == vectors[b]).groupby(vectors["delivery_day"]).all()
-        rows.append({"comparison": f"{a} - {b}", "days": int(len(diff)),
-                     "mean_daily_profit_diff_eur": mean, "ci95_low_eur": lo, "ci95_high_eur": hi,
-                     "annual_profit_diff_eur_per_mw": mean * 365 / config.POWER_MW,
-                     "days_rank_better": int((diff > 1e-9).sum()), "days_reg_better": int((diff < -1e-9).sum()),
-                     "days_identical_price_vector": int(same_vector.sum()),
-                     "rmse_diff_eur_mwh": rmse, "rmse_diff_ci95_low": rlo, "rmse_diff_ci95_high": rhi})
-    return pd.DataFrame(rows)
-
-
 def cmd_validate(args):
     """Validation year (PLAN.md §7): the 7 strategies, the paired rank - reg differences and
     the table of every configuration. The test period stays locked."""
@@ -227,12 +184,12 @@ def cmd_validate(args):
     # Every fitted configuration; "<ranker>:final" holds scores, not prices, so it is left out.
     config_cols = [c for c in vectors.columns if ":" in c and not c.endswith(":final")]
     log(f"Solving {len(STRATEGIES) + len(config_cols)} price vectors x 365 days with HiGHS + SCIP ...")
-    daily = parallel_daily_profits(vectors, STRATEGIES + config_cols)
+    daily = evaluate.parallel_daily_profits(vectors, STRATEGIES + config_cols)
     evaluate.check_perfect_is_upper_bound(daily, [c for c in daily.columns if c not in ("delivery_day", "n_hours", "S-perfect")])
 
     table = pd.DataFrame([{**evaluate.value_summary(daily, s), **evaluate.forecast_summary(vectors, s)}
                           for s in STRATEGIES])
-    paired = paired_differences(vectors, daily)
+    paired = evaluate.paired_differences(vectors, daily)
     configs = config_table(vectors, daily)
     table.to_csv(config.RESULTS_DIR / "validation_strategies.csv", index=False)
     daily[["delivery_day", "n_hours"] + STRATEGIES].to_csv(config.RESULTS_DIR / "validation_daily_profit.csv", index=False)
@@ -293,6 +250,130 @@ def write_validation_summary(table, paired, configs):
     (config.RESULTS_DIR / "validation_summary.md").write_text(text)
 
 
+# --- Test run (PLAN.md §6) --------------------------------------------------------------------
+# Files the test run depends on. They must equal the pre-registration commit (PLAN.md §6).
+FROZEN_PATHS = ["src", "requirements.txt", "pyproject.toml", "results/selected_xgb-reg.json",
+                "results/selected_xgb-rank.json", "results/selected_lstm-reg.json",
+                "results/selected_lstm-rank.json"]
+
+
+def code_changes_since(commit):
+    """Frozen files that differ from `commit` in the working tree, including new files."""
+    def git(*args):
+        return subprocess.run(["git", *args], cwd=config.ROOT, capture_output=True, text=True, check=True).stdout.split()
+    return sorted(set(git("diff", "--name-only", commit, "--", *FROZEN_PATHS))
+                  | set(git("ls-files", "--others", "--exclude-standard", "--", *FROZEN_PATHS)))
+
+
+def cmd_test(args):
+    """The test run of PLAN.md §6, once. With --rehearsal, the same pipeline on the validation
+    year (quarterly refits from 2024-10-01), which needs no test data."""
+    from bessrank import backtest, data
+    if args.rehearsal:
+        prefix, starts, last_day = "rehearsal", backtest.REHEARSAL_QUARTERS, config.VAL_END
+        hourly = data.load_hourly()
+        lock_commit, changed = None, []
+    else:
+        config.require_test_unlocked()
+        lock_commit = config.LOCK_FILE.read_text().strip()
+        changed = code_changes_since(lock_commit)
+        prefix = "test_amended" if args.amendment else "test"
+        if changed and not args.amendment:
+            sys.exit("The test run uses the code of the pre-registration commit "
+                     f"{lock_commit[:12]} (PLAN.md §6). Changed: {', '.join(changed)}. A re-run after "
+                     "a fix is a dated §12 amendment: run with --amendment.")
+        if (config.RESULTS_DIR / f"{prefix}_hypotheses.csv").exists():
+            sys.exit(f"results/{prefix}_hypotheses.csv exists: the test runs once (PLAN.md §6).")
+        starts, last_day = backtest.TEST_QUARTERS, config.TEST_END
+        hourly = data.load_hourly(include_test=True)
+
+    quarter_list = backtest.quarters(starts, last_day)
+    log(f"{prefix}: {quarter_list[0][0]} to {last_day}, refits at {', '.join(str(s) for s in starts)}")
+    out = backtest.run(hourly, quarter_list, log=log)
+
+    for name in ["strategies", "hypotheses", "quarterly", "quarterly_pairs", "daily_profit", "refits"]:
+        out[name].to_csv(config.RESULTS_DIR / f"{prefix}_{name}.csv", index=False)
+    # Hourly forecasts stay in data/ (they sit next to SMARD prices, never committed).
+    config.PREDICTIONS_DIR.mkdir(parents=True, exist_ok=True)
+    out["forecasts"].to_parquet(config.PREDICTIONS_DIR / f"{prefix}_forecasts.parquet", index=False)
+    update_provenance(prefix, {"first_day": str(quarter_list[0][0]), "last_day": str(last_day),
+                               "refit_days": [str(s) for s in starts], "days": int(len(out["daily_profit"])),
+                               "seeds": list(config.SEEDS), "strategies": STRATEGIES,
+                               "solver_cross_checks": out["solver_cross_checks"],
+                               "preregistration_commit": lock_commit,
+                               "frozen_files_changed_since_preregistration": changed,
+                               "runtime_seconds": {k: round(v, 1) for k, v in out["timings"].items()}})
+    write_test_summary(prefix, out, quarter_list)
+    show = out["hypotheses"].set_index("hypothesis")[["estimate", "ci95_low", "ci95_high", "margin", "verdict"]]
+    print(show.round(3).to_string())  # rounded for display only
+    log(f"done in {out['timings']['total_s'] / 60:.1f} min")
+
+
+def write_test_summary(prefix, out, quarter_list):
+    """results/<prefix>_summary.md: hypotheses, strategies and quarters, rounded for display."""
+    from bessrank.data import _markdown_table
+    hyp = out["hypotheses"][["hypothesis", "role", "comparison", "statistic", "estimate", "ci95_low",
+                             "ci95_high", "margin", "verdict"]].copy()
+    for col in ["estimate", "ci95_low", "ci95_high", "margin"]:
+        hyp[col] = hyp[col].round(3)
+    hyp = hyp.astype(object).where(hyp.notna(), "")
+    h1 = out["hypotheses"].set_index("hypothesis").loc[["H1", "H3"]]
+    extra = h1[["annual_diff_eur_per_mw", "relative_to_reg_profit", "days_rank_better",
+                "days_reg_better", "days_identical_price_vector"]].reset_index()
+    extra["annual_diff_eur_per_mw"] = extra["annual_diff_eur_per_mw"].round(0)
+    extra["relative_to_reg_profit"] = (100 * extra["relative_to_reg_profit"].astype(float)).round(2).astype(str) + "%"
+    extra.columns = ["Hypothesis", "Annual diff (EUR/MW/year)", "Diff / reg profit", "Days rank better",
+                     "Days reg better", "Days same vector"]
+
+    table = out["strategies"]
+    show = table[["strategy"] + list(DISPLAY)].rename(columns=DISPLAY).copy()
+    show["Profit (EUR/MW/year)"] = show["Profit (EUR/MW/year)"].round(0).astype(int)
+    for col in ["Capture", "Losing days", "Hit 2 cheapest", "Hit 2 dearest"]:
+        show[col] = (100 * show[col]).round(1).astype(str) + "%"
+    show = show.round(3)
+
+    q = out["quarterly"].copy()
+    q["profit_eur_per_mw"] = q["profit_eur_per_mw"].round(0).astype(int)
+    q["capture_rate"] = (100 * q["capture_rate"]).round(1).astype(str) + "%"
+    q = q[["quarter_start", "strategy", "days", "profit_eur_per_mw", "capture_rate", "rmse_eur_mwh",
+           "spearman_rho_mean"]].round(3)
+    q.columns = ["Quarter from", "Strategy", "Days", "Profit (EUR/MW)", "Capture", "RMSE (EUR/MWh)", "Spearman rho"]
+    qp = out["quarterly_pairs"].round(3)
+    qp.columns = ["Quarter from", "Comparison", "Days", "Mean daily diff (EUR)", "Days rank better",
+                  "Days reg better", "RMSE diff (EUR/MWh)"]
+
+    refits = out["refits"].groupby(["quarter_start", "model"]).agg(
+        train_days=("train_days", "first"), dropped=("train_days_dropped", "first"),
+        n_iter=("n_iter", lambda x: ", ".join(str(v) for v in x)), fit_s=("fit_seconds", "sum")).reset_index()
+    refits["fit_s"] = refits["fit_s"].round(0).astype(int)
+    refits.columns = ["Refit (quarter from)", "Model", "Training days", "Days dropped (§2)",
+                      "Trees/epochs per seed", "Fit time, 3 seeds (s)"]
+    t = out["timings"]
+    label = ("Rehearsal on the validation year (exploratory): the §6 test pipeline with refits at the "
+             "start of each validation quarter." if prefix == "rehearsal" else
+             "Test year, pre-registered run (PLAN.md §6). H1 is the only confirmatory test; H2 and H3 "
+             "are secondary, without multiplicity adjustment.")
+    text = "\n".join([
+        f"# {prefix.replace('_', ' ').capitalize()}: {quarter_list[0][0]} to {quarter_list[-1][1]} "
+        f"({len(out['daily_profit'])} delivery days)", "", label, "",
+        "Simulated 1 MW / 2 MWh battery, day-ahead market only, price-taker. Rounded for display; "
+        f"the `{prefix}_*.csv` files next to this one hold the raw numbers.", "",
+        "## Hypotheses", "",
+        "Moving-block bootstrap over days: 7-day blocks, 10,000 resamples, seed 20261004 (same "
+        "resampled days for every row). Margin = 1% of the reg strategy's RMSE over the period.", "",
+        _markdown_table(hyp), "", _markdown_table(extra), "",
+        "## Strategies", "",
+        "VaR 5% is the 5th percentile (P5) of daily profit and ES 5% the mean daily profit of the "
+        "worst 5% of days. Both are profit levels: a negative value is a loss.", "",
+        _markdown_table(show), "",
+        "## By quarter (descriptive)", "", _markdown_table(q), "", _markdown_table(qp), "",
+        "## Refits", "", _markdown_table(refits), "",
+        f"Runtime: {t['total_s'] / 60:.1f} min in total (features {t['features_s']:.0f} s, refits "
+        f"{t['refits_s'] / 60:.1f} min, {out['solver_cross_checks']} day solves with HiGHS and SCIP "
+        f"{t['solve_s']:.0f} s).", ""])
+    (config.RESULTS_DIR / f"{prefix}_summary.md").write_text(text)
+
+
 def cmd_smoke(args):
     from bessrank import databricks
     ok = databricks.smoke_test()
@@ -316,7 +397,13 @@ def main():
     p.add_argument("model", choices=["xgb-reg", "xgb-rank", "lstm-reg", "lstm-rank"])
     p.set_defaults(func=cmd_tune)
     sub.add_parser("validate", help="validation-year strategies").set_defaults(func=cmd_validate)
-    for name in ["test", "explore", "report"]:
+    p = sub.add_parser("test", help="the pre-registered test run (PLAN.md §6), once")
+    p.add_argument("--rehearsal", action="store_true",
+                   help="same pipeline on the validation year; needs no test data")
+    p.add_argument("--amendment", action="store_true",
+                   help="re-run after a dated §12 amendment; writes test_amended_* files")
+    p.set_defaults(func=cmd_test)
+    for name in ["explore", "report"]:
         sub.add_parser(name).set_defaults(func=not_yet)
     args = parser.parse_args()
     args.func(args)

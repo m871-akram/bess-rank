@@ -146,3 +146,68 @@ def rmse_difference_ci(sse_a, sse_b, n_hours, block=config.BOOTSTRAP_BLOCK_DAYS,
     tail = (1 - level) / 2
     lower, upper = np.quantile(diffs, [tail, 1 - tail])
     return float(point), float(lower), float(upper)
+
+
+# --- Paired comparisons and pre-registered verdicts (PLAN.md §6) ------------------------------
+def paired_differences(vectors, daily, pairs=config.PAIRS):
+    """Daily profit and RMSE differences, rank minus reg, with moving-block bootstrap CIs
+    (the statistics of H1-H3, PLAN.md §6). Every row uses the same resampled days."""
+    rows = []
+    sse = (vectors[[s for pair in pairs for s in pair]].sub(vectors["price"], axis=0) ** 2
+           ).groupby(vectors["delivery_day"]).sum()
+    for a, b in pairs:
+        diff = daily[a] - daily[b]
+        mean, lo, hi = block_bootstrap_ci(diff)
+        rmse, rlo, rhi = rmse_difference_ci(sse[a].to_numpy(), sse[b].to_numpy(), daily["n_hours"].to_numpy())
+        same_vector = (vectors[a] == vectors[b]).groupby(vectors["delivery_day"]).all()
+        rows.append({"comparison": f"{a} - {b}", "days": int(len(diff)),
+                     "mean_daily_profit_diff_eur": mean, "ci95_low_eur": lo, "ci95_high_eur": hi,
+                     "annual_profit_diff_eur_per_mw": mean * 365 / config.POWER_MW,
+                     "days_rank_better": int((diff > 1e-9).sum()), "days_reg_better": int((diff < -1e-9).sum()),
+                     "days_identical_price_vector": int(same_vector.sum()),
+                     "rmse_diff_eur_mwh": rmse, "rmse_diff_ci95_low": rlo, "rmse_diff_ci95_high": rhi})
+    return pd.DataFrame(rows)
+
+
+def verdict_superiority(lower, upper):
+    """H1 and H3: supported if the CI's lower bound > 0, contradicted if its upper bound < 0,
+    inconclusive otherwise."""
+    if lower > 0:
+        return "supported"
+    if upper < 0:
+        return "contradicted"
+    return "inconclusive"
+
+
+def verdict_equivalence(lower, upper, margin):
+    """H2: supported if the whole CI lies inside (-margin, +margin), contradicted if the whole
+    CI lies outside it (lower bound > margin, or upper bound < -margin), inconclusive otherwise."""
+    if -margin < lower and upper < margin:
+        return "supported"
+    if lower > margin or upper < -margin:
+        return "contradicted"
+    return "inconclusive"
+
+
+# --- Solving many price vectors in parallel ----------------------------------------------------
+def _profits_worker(job):
+    vectors, names = job
+    return daily_profits(vectors, names)
+
+
+def parallel_daily_profits(vectors, names, workers=4):
+    """daily_profits for many price vectors, split over processes. Every day is still
+    solved by HiGHS and re-checked by SCIP (CLAUDE.md rule 7)."""
+    from concurrent.futures import ProcessPoolExecutor
+    chunks = [names[i::workers] for i in range(workers) if names[i::workers]]
+    keys = ["ts_utc", "delivery_day", "price"]
+    jobs = [(vectors[keys + chunk], chunk) for chunk in chunks]
+    with ProcessPoolExecutor(len(jobs)) as pool:
+        parts = list(pool.map(_profits_worker, jobs))
+    daily = parts[0]
+    for part in parts[1:]:
+        daily = daily.merge(part, on=["delivery_day", "n_hours"])
+    daily = daily[["delivery_day", "n_hours"] + names]
+    # Perfect foresight is checked against every other vector, also across worker chunks.
+    check_perfect_is_upper_bound(daily, [c for c in names if c != PERFECT])
+    return daily
