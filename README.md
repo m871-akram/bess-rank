@@ -1,13 +1,13 @@
-# bess-rank: rank, don't forecast
+# bess-rank: learning to rank the hours for battery trading
 
-*A battery doesn't need the price, it needs the order.*
+*For a battery, the order of the hours matters more than their prices.*
 
 - **Question.** Does training a model to rank the hours of each day, instead of predicting their
   prices, earn more money for a simulated 1 MW / 2 MWh battery, German day-ahead market,
   price-taker?
 - **Result.** Training XGBoost to rank the hours earned +667 €/MW/yr more than training it to
   predict prices (+1.0%, 95% CI +285 to +1,036), closing 16% of the gap to perfect foresight.
-  Pre-registered, tested once on a locked year. For the BiLSTM, ranking made no difference.
+  Pre-registered, tested once on a locked year. For the BiLSTM, ranking made no detectable difference.
 - **Accuracy is not value (exploratory).** Across 58 validation fits, how well a model orders the hours of each
   day predicts its profit far better than its RMSE does (rank correlation with profit +0.87 vs
   −0.59).
@@ -49,7 +49,7 @@ Capture = profit ÷ perfect-foresight profit. Full table with VaR, ES, drawdown 
     difference is +4.38 €/day (2.20 to 6.51).
 - **H2 (secondary): inconclusive.** The ranked vector's RMSE was lower, not equal: −0.25 €/MWh
   (95% CI −0.37 to −0.14) against a ±0.30 €/MWh equivalence margin.
-- **H3 (secondary): inconclusive.** No difference for the LSTM: S-lstm-rank − S-lstm-reg =
+- **H3 (secondary): inconclusive.** No detectable difference for the BiLSTM: S-lstm-rank − S-lstm-reg =
   −0.08 €/day (95% CI −1.19 to 1.03).
 - *Exploratory:* S-xgb-rank − S-lstm-reg = −0.25 €/day (95% CI −1.61 to 1.14). The BiLSTM price
   model alone earns about as much as the XGBoost ranker.
@@ -67,7 +67,9 @@ on 116.*
 
 *Fig. 3. Validation year, 58 fits (every configuration and seed of the hyperparameter search).
 Profit against RMSE (left) and against the mean within-day Spearman ρ between forecast and
-actual prices (right). Triangles are rankers, shown through their reordered price vectors.*
+actual prices (right). Triangles are rankers, shown through their reordered price vectors. It
+holds within each price model: within-day ρ +0.77 vs RMSE −0.36 for XGBoost, +0.50 vs −0.07 for
+the BiLSTM.*
 
 ## Method
 
@@ -80,7 +82,7 @@ actual prices (right). Triangles are rankers, shown through their reordered pric
   (37 real, 6 synthetic) from only the data visible at 11:00 on D-1 under those rules and checks
   that the values are identical. The TSO wind and solar forecasts count as visible (see the
   TSO caveat and Limitations).
-- **Models (2×2).** XGBoost and a bidirectional LSTM, each trained either to predict prices
+- **Models (2×2).** XGBoost and a BiLSTM (bidirectional LSTM), each trained either to predict prices
   (squared error) or to rank the hours of each day (pairwise logistic loss over every pair of
   hours). Hyperparameters were chosen on the validation year by RMSE or within-day Spearman ρ,
   never by profit. Each model was refitted at the start of each test quarter, with 3 seeds.
@@ -120,7 +122,7 @@ style of a bank's model-risk review.
 - **Where profit is lost:** the order of the hours accounts for 7.6 of S-xgb-reg's 11.2 €/day
   gap to perfect foresight; the BiLSTM price model already orders the hours almost as well as
   the XGBoost ranker ([§9.2](VALIDATION.md#92-where-profit-is-lost-test-year)).
-- **The LSTM's Jul–Sep 2026 loss is mostly one day:** 2026-09-14 accounts for −108 € of the
+- **The BiLSTM's Jul–Sep 2026 loss is mostly one day:** 2026-09-14 accounts for −108 € of the
   quarter's −134 € ([§9.2](VALIDATION.md#92-where-profit-is-lost-test-year)).
 - **Drift (PSI):** the price-level features shift strongly between training and test (PSI
   1.05–1.72); the within-day rank and profile features stay stable (0.00–0.07), and the
@@ -179,11 +181,11 @@ Edition).
   is a thin wrapper around [`bessrank.pipeline`](src/bessrank/pipeline.py), which does the
   following:
   - refits the XGBoost pair every quarter with the frozen hyperparameters and 3 seeds;
-  - builds the five non-LSTM strategies;
+  - builds the five strategies that do not use the BiLSTM;
   - solves every day with HiGHS and re-checks it with SCIP, with the same stop rules as the VM.
 
   It is a test-type run: the job passes `BESS_UNLOCK_TEST=1` and the bundle carries the lock
-  file. Package versions are pinned to those of the S3 run, and no Git credentials are stored
+  file. Package versions are pinned to those of the confirmatory test run, and no Git credentials are stored
   in Databricks.
 - **Delta tables** (`workspace.bess`; every row carries the commit and the test quarter):
 
@@ -199,12 +201,19 @@ Edition).
   summary run with the test metrics.
 - **Parity with the VM run.** Run 967734030312010 (commit 4cd8d8a; 5.9 min in the notebook,
   about 7 min end to end) reproduced all 24 fits' forecasts exactly (largest difference 0.0). The daily profits of the five strategies
-  match the S3 results within 2.3e-13 € on all 365 days. H1 recomputed from the Databricks
+  match the confirmatory test results within 2.3e-13 € on all 365 days. H1 recomputed from the Databricks
   numbers gives +1.83 €/day (95% CI 0.78 to 2.84). Details:
   [`results/databricks_pipeline.json`](results/databricks_pipeline.json).
-- **Why the LSTM stays in the VM.** Running it on serverless would mean installing torch there.
-  The LSTM refits also took most of the test run's 19 minutes, while Free Edition compute has
-  daily quotas. The LSTM pair is reproduced in the VM instead (`explore forecasts` above).
+- **Why the BiLSTM stays in the VM.** Running it on serverless would mean installing torch there.
+  The BiLSTM refits also took most of the test run's 19 minutes, while Free Edition compute has
+  daily quotas. The BiLSTM pair is reproduced in the VM instead (`explore forecasts` above).
+
+## Next steps
+
+- Train through the battery program itself with a decision-focused loss (e.g. SPO+), instead of
+  the pairwise ranking loss used here as a proxy for the order that matters to the schedule.
+- Intraday markets and 15-minute products.
+- Other bidding zones and other years.
 
 ## Limitations
 
