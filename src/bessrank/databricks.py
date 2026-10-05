@@ -7,6 +7,8 @@ logged or written to a file (CLAUDE.md rule 11).
 import base64
 import json
 import os
+import subprocess
+import tarfile
 import time
 
 import requests
@@ -14,6 +16,12 @@ import requests
 from bessrank import config
 
 SMOKE_NOTEBOOK = config.ROOT / "notebooks" / "00_smoke_test.py"
+PIPELINE_NOTEBOOK = config.ROOT / "notebooks" / "01_pipeline.py"
+JOB_NAME = "bess-rank-pipeline"
+# Committed files the pipeline needs: the code, the lock, the frozen hyperparameters and the
+# S3 daily profits for the parity check.
+BUNDLE_PATHS = ["src", "pyproject.toml", "PREREGISTRATION.lock", "results/selected_xgb-reg.json",
+                "results/selected_xgb-rank.json", "results/test_daily_profit.csv"]
 
 
 def _host():
@@ -109,6 +117,18 @@ def download_file(volume_relpath, local_path):
     return True
 
 
+def remote_file_size(volume_relpath):
+    """Size in bytes of a file on the volume, or None if it is missing or the call fails."""
+    folder, name = f"{config.DBX_VOLUME_PATH}/{volume_relpath}".rsplit("/", 1)
+    resp = api("GET", f"/api/2.0/fs/directories{folder}")
+    if resp.status_code != 200:
+        return None
+    for entry in resp.json().get("contents", []):
+        if entry.get("name") == name:
+            return entry.get("file_size")
+    return None
+
+
 # --- Workspace and Jobs -------------------------------------------------------------------
 def import_notebook(local_path, workspace_path):
     """Import a Python source notebook into the workspace (overwrites)."""
@@ -145,6 +165,52 @@ def wait_for_run(run_id, timeout_s=1800, poll_s=15):
             return state.get("result_state", state["life_cycle_state"]), detail
         time.sleep(poll_s)
     return "TIMEOUT", f"run {run_id} still running after {timeout_s} s"
+
+
+# --- S5 pipeline job (PLAN.md §9) -----------------------------------------------------------
+def build_bundle(commit, out_path):
+    """A tar of BUNDLE_PATHS as committed in `commit` (git archive), plus a COMMIT file."""
+    subprocess.run(["git", "archive", "--format=tar", "-o", str(out_path), commit, *BUNDLE_PATHS],
+                   cwd=config.ROOT, check=True)
+    commit_file = out_path.parent / "COMMIT"
+    commit_file.write_text(commit + "\n")
+    with tarfile.open(out_path, "a") as tar:
+        tar.add(commit_file, arcname="COMMIT")
+    commit_file.unlink()
+
+
+def job_settings(notebook_path, bundle):
+    """The job: one serverless notebook task (no compute spec), no schedule. The job carries the
+    BESS_UNLOCK_TEST half of the test lock; the bundle carries PREREGISTRATION.lock."""
+    return {
+        "name": JOB_NAME,
+        "max_concurrent_runs": 1,
+        "timeout_seconds": 5400,
+        "tasks": [{"task_key": "pipeline",
+                   "notebook_task": {"notebook_path": notebook_path, "source": "WORKSPACE",
+                                     "base_parameters": {"bundle": bundle, "BESS_UNLOCK_TEST": "1"}}}],
+    }
+
+
+def ensure_job(settings):
+    """Create the job, or reset it to `settings` if a job with that name exists. Returns job_id."""
+    listed = _check(api("GET", "/api/2.2/jobs/list", params={"name": settings["name"]}), "list jobs")
+    jobs = listed.get("jobs", [])
+    if jobs:
+        job_id = jobs[0]["job_id"]
+        _check(api("POST", "/api/2.2/jobs/reset", json={"job_id": job_id, "new_settings": settings}), "reset job")
+        return job_id
+    return _check(api("POST", "/api/2.2/jobs/create", json=settings), "create job")["job_id"]
+
+
+def run_job_now(job_id):
+    return _check(api("POST", "/api/2.2/jobs/run-now", json={"job_id": job_id}), "run job")["run_id"]
+
+
+def read_text(volume_relpath):
+    """A small text file from the volume, or None."""
+    resp = api("GET", f"/api/2.0/fs/files{config.DBX_VOLUME_PATH}/{volume_relpath}")
+    return resp.text if resp.status_code == 200 else None
 
 
 # --- S0 smoke test ------------------------------------------------------------------------

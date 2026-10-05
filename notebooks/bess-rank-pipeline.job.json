@@ -1,0 +1,18 @@
+{
+  "name": "bess-rank-pipeline",
+  "max_concurrent_runs": 1,
+  "timeout_seconds": 5400,
+  "tasks": [
+    {
+      "task_key": "pipeline",
+      "notebook_task": {
+        "notebook_path": "/Users/<user>/bess-rank-notebooks/01_pipeline",
+        "source": "WORKSPACE",
+        "base_parameters": {
+          "bundle": "pipeline/bess-rank-<commit12>.tar",
+          "BESS_UNLOCK_TEST": "1"
+        }
+      }
+    }
+  ]
+}
