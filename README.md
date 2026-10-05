@@ -8,7 +8,7 @@
 - **Result.** Training XGBoost to rank the hours earned +667 €/MW/yr more than training it to
   predict prices (+1.0%, 95% CI +285 to +1,036), closing 16% of the gap to perfect foresight.
   Pre-registered, tested once on a locked year. For the BiLSTM, ranking made no difference.
-- **Accuracy is not value.** Across 58 validation fits, how well a model orders the hours of each
+- **Accuracy is not value (exploratory).** Across 58 validation fits, how well a model orders the hours of each
   day predicts its profit far better than its RMSE does (rank correlation with profit +0.87 vs
   −0.59).
 
@@ -40,12 +40,13 @@ Capture = profit ÷ perfect-foresight profit. Full table with VaR, ES, drawdown 
   +667 €/MW/year (+0.97%).
   *Exploratory checks next to H1, not tests:*
   - by quarter: +2.60, +0.76, +1.93 and +2.01 €/day;
-  - with the validation tree counts fixed at every refit (no early stopping):
-    +1.30 €/day (0.36 to 2.36). About 0.5 €/day of the official effect came from XGB-reg's
-    unstable early stopping;
-  - TSO caveat: the TSO wind and solar forecasts used as features are published after the
-    auction. Without them both XGBoost strategies earn 5–6% less, and the difference is
-    +4.38 €/day (2.20 to 6.51).
+  - with both models' validation tree counts fixed at every refit (no early stopping):
+    +1.30 €/day (0.36 to 2.36). About 0.5 €/day of the official effect came from early stopping
+    at the refits, mostly XGB-reg's: fixing the trees raises S-xgb-reg by 0.69 €/day and
+    S-xgb-rank by 0.15;
+  - TSO caveat: the TSO wind and solar forecasts used as features are only required by 18:00 on
+    D-1, after the 12:00 auction. Without them both XGBoost strategies earn 5–6% less, and the
+    difference is +4.38 €/day (2.20 to 6.51).
 - **H2 (secondary): inconclusive.** The ranked vector's RMSE was lower, not equal: −0.25 €/MWh
   (95% CI −0.37 to −0.14) against a ±0.30 €/MWh equivalence margin.
 - **H3 (secondary): inconclusive.** No difference for the LSTM: S-lstm-rank − S-lstm-reg =
@@ -71,12 +72,14 @@ actual prices (right). Triangles are rankers, shown through their reordered pric
 ## Method
 
 - **Data.** SMARD (Bundesnetzagentur), bidding zone DE-LU, hourly: day-ahead prices, TSO
-  day-ahead forecasts of load, wind and solar, and actual load. Train 2019-01-01 to 2024-09-30,
+  day-ahead forecasts of load, wind and solar, actual load and actual residual load. Train 2019-01-01 to 2024-09-30,
   validation 2024-10-01 to 2025-09-30, test 2025-10-01 to 2026-09-30 (365 days). From
   2025-10-01 the hourly price is the mean of the four quarter-hour prices.
 - **Decision time.** The schedule for day D is fixed at 11:00 Europe/Berlin on D-1. Each of the
-  42 features declares its availability rule, and a test recomputes the features after deleting
-  all later data and checks that the values are identical.
+  42 features declares when its data become available. A test rebuilds the features of 43 days
+  (37 real, 6 synthetic) from only the data visible at 11:00 on D-1 under those rules and checks
+  that the values are identical. The TSO wind and solar forecasts count as visible (see the
+  TSO caveat and Limitations).
 - **Models (2×2).** XGBoost and a bidirectional LSTM, each trained either to predict prices
   (squared error) or to rank the hours of each day (pairwise logistic loss over every pair of
   hours). Hyperparameters were chosen on the validation year by RMSE or within-day Spearman ρ,
@@ -100,10 +103,12 @@ actual prices (right). Triangles are rankers, shown through their reordered pric
   two objectives differ by more than 1e-6 relative or a strategy beats perfect foresight on any
   day.
 - **Pre-registration.** The hypotheses, statistics, decision rules and every setting were fixed
-  in [PLAN.md §6](PLAN.md) and merged before any test-period value was loaded (tag `prereg`).
-  Test data load only when `PREREGISTRATION.lock` holds that commit and `BESS_UNLOCK_TEST=1` is
-  set. The test ran once, at tag `confirmatory-run`, and the code refuses to overwrite its
-  results.
+  in [PLAN.md §6](PLAN.md) and merged before any test-period value was seen (tag `prereg`);
+  until then the data checks on the test period reported only counts and pass/fail. Test data
+  load only when `BESS_UNLOCK_TEST=1` is set and `PREREGISTRATION.lock` holds a commit hash (the
+  committed file holds the `prereg` commit); the test run also refuses to start if the code
+  differs from that commit. The test ran once, at tag `confirmatory-run`, and the code refuses
+  to overwrite its results.
 - **Uncertainty.** Every CI is the 95% percentile interval of a moving-block bootstrap over the
   365 test days (7-day blocks, 10,000 resamples), never over hours.
 
@@ -115,10 +120,11 @@ style of a bank's model-risk review.
 - **Where profit is lost:** the order of the hours accounts for 7.6 of S-xgb-reg's 11.2 €/day
   gap to perfect foresight; the BiLSTM price model already orders the hours almost as well as
   the XGBoost ranker ([§9.2](VALIDATION.md#92-where-profit-is-lost-test-year)).
-- **The LSTM's Jul–Sep 2026 loss is one day:** 2026-09-14 accounts for −108 € of the quarter's
-  −134 € ([§9.2](VALIDATION.md#92-where-profit-is-lost-test-year)).
+- **The LSTM's Jul–Sep 2026 loss is mostly one day:** 2026-09-14 accounts for −108 € of the
+  quarter's −134 € ([§9.2](VALIDATION.md#92-where-profit-is-lost-test-year)).
 - **Drift (PSI):** the price-level features shift strongly between training and test (PSI
-  1.05–1.72), while the within-day order features the ranker relies on stay stable (0.00–0.07)
+  1.05–1.72); the within-day rank and profile features stay stable (0.00–0.07), and the
+  ranker's top feature, the within-day residual-load deviation, shifts moderately (0.17)
   ([§8](VALIDATION.md#8-stability-and-monitoring-exploratory)).
 - **Conformal quantiles:** after calibration on the validation year, the 90% interval covers
   88.6% of test hours (85.0% before)
@@ -134,25 +140,30 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python -m bessrank.run data      # rebuild data/ from the Databricks volume, or download from SMARD
 python -m bessrank.run qa        # data quality report (test period: counts and pass/fail only)
+python -m bessrank.run features  # feature table (train + validation; the test year stays locked)
 python -m bessrank.run tune xgb-reg   # validation-year search; also xgb-rank, lstm-reg, lstm-rank
 python -m bessrank.run validate  # validation-year strategies and the table of every configuration
 pytest
 ```
 
-The test year is locked: test data load only when `PREREGISTRATION.lock` holds the
-pre-registration commit and `BESS_UNLOCK_TEST=1` is set.
+The test year is locked: test data load only when `BESS_UNLOCK_TEST=1` is set and
+`PREREGISTRATION.lock` holds a commit hash (the committed one is the pre-registration merge,
+517478e).
 
 ```bash
-BESS_UNLOCK_TEST=1 python -m bessrank.run explore forecasts   # refit all 48 test models, compare
-BESS_UNLOCK_TEST=1 python -m bessrank.run explore analyses    # the VALIDATION.md analyses
-BESS_UNLOCK_TEST=1 python -m bessrank.run report              # the three figures above
+BESS_UNLOCK_TEST=1 python -m bessrank.run explore forecasts       # refit all 48 test models, compare
+BESS_UNLOCK_TEST=1 python -m bessrank.run explore xgb-variants    # no-TSO and fixed-tree refits
+BESS_UNLOCK_TEST=1 python -m bessrank.run explore analyses        # the VALIDATION.md analyses
+BESS_UNLOCK_TEST=1 python -m bessrank.run explore conformal-cvar  # conformal quantiles and CVaR
+BESS_UNLOCK_TEST=1 python -m bessrank.run report                  # the three figures above
 ```
 
 `explore forecasts` refits every test model with the frozen code and compares the result with
 the official run. A fresh VM reproduced all 48 test fits and the daily profits to within
-2.3e-13 €. To re-run the confirmatory test itself, use a separate clone at tag
-`confirmatory-run` and remove its `results/test_*` files first: `python -m bessrank.run test`
-refuses to overwrite existing results. Package versions, the SMARD download time and the commit
+2.3e-13 €. To re-run the confirmatory test itself, check out tag `confirmatory-run` in a
+separate clone (it predates the committed results) and run
+`BESS_UNLOCK_TEST=1 python -m bessrank.run test`; on later commits the command refuses because
+`results/test_hypotheses.csv` exists. Package versions, the SMARD download time and the commit
 of every stage are in [`results/provenance.json`](results/provenance.json).
 
 ## Databricks
@@ -186,9 +197,8 @@ Edition).
 - **MLflow experiment `bess-rank`.** 24 runs, one per fit (hyperparameters, tree count, the
   validation-year selection metric, the fit's test-quarter RMSE or Spearman ρ, commit), plus one
   summary run with the test metrics.
-- **Parity with the VM run.** Run 967734030312010 (commit 4cd8d8a; 5.9 min in the notebook, about
-  7 min end to end) reproduced all 24
-  fits' forecasts exactly (largest difference 0.0). The daily profits of the five strategies
+- **Parity with the VM run.** Run 967734030312010 (commit 4cd8d8a; 5.9 min in the notebook,
+  about 7 min end to end) reproduced all 24 fits' forecasts exactly (largest difference 0.0). The daily profits of the five strategies
   match the S3 results within 2.3e-13 € on all 365 days. H1 recomputed from the Databricks
   numbers gives +1.83 €/day (95% CI 0.78 to 2.84). Details:
   [`results/databricks_pipeline.json`](results/databricks_pipeline.json).
@@ -201,8 +211,10 @@ Edition).
 - A simulated battery: 1 MW / 2 MWh, a linear degradation cost, one cycle per day.
 - Price-taker: the battery's bids do not move the price, and every schedule is assumed to clear.
 - Day-ahead market only: no intraday, balancing or ancillary revenue; no fees or grid charges.
-- TSO wind and solar forecasts are published after the day-ahead auction. They stand in for the
-  vendor forecasts a trader would buy; without them profits fall by 5–6%.
+- TSO wind and solar forecasts are only required by 18:00 on D-1, after the 12:00 day-ahead
+  auction, so they may not be available at the decision time. They stand in for the vendor
+  forecasts a trader would buy; without them the two XGBoost strategies earn 5–6% less (the
+  BiLSTM was not re-tested).
 - No fuel or carbon prices; lagged prices carry the price level.
 - From 2025-10-01 the auction clears in 15-minute slots; this study averages them to hours.
 - One market and one test year.
