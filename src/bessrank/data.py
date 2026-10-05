@@ -35,6 +35,7 @@ CHECK_SERIES = {"wind_pv_fc_smard": 5097, "residual_load_fc_smard": 4362}
 ID_CHECK_WEEK = date(2024, 6, 10)  # a Monday in the training period
 
 MAX_CONCURRENT = 4  # at most 4 requests in flight, to stay polite to SMARD
+MAX_REQUESTS_PER_SECOND = 10  # and at most ~10 requests started per second (all threads)
 MAX_ATTEMPTS = 5  # waits of 1, 2, 4, 8 s between attempts
 
 # Harmonised day-ahead clearing price limits (SDAC), used as a format check only.
@@ -42,6 +43,8 @@ PRICE_MIN, PRICE_MAX = -500.0, 4000.0
 
 _thread_local = threading.local()
 _download_counter = itertools.count(1)
+_rate_lock = threading.Lock()
+_next_request_time = 0.0
 
 
 # --- SMARD download -----------------------------------------------------------------------
@@ -52,10 +55,21 @@ def _session():
     return _thread_local.session
 
 
+def _wait_for_rate_limit():
+    """Space request starts at least 1/MAX_REQUESTS_PER_SECOND apart, across all threads."""
+    global _next_request_time
+    with _rate_lock:
+        now = time.monotonic()
+        start = max(now, _next_request_time)
+        _next_request_time = start + 1.0 / MAX_REQUESTS_PER_SECOND
+    time.sleep(max(0.0, start - now))
+
+
 def fetch_json(url):
     """GET a SMARD JSON file, retrying with exponential backoff."""
     error = None
     for attempt in range(MAX_ATTEMPTS):
+        _wait_for_rate_limit()
         try:
             resp = _session().get(url, timeout=30)
             if resp.status_code == 200:
@@ -308,13 +322,62 @@ def build_data(refresh=False):
     return meta
 
 
-def load_hourly(include_test=False):
-    """Read the hourly table. Test-period days are dropped unless the lock is open."""
+def load_hourly(include_test=False, fill_gaps=True):
+    """Read the hourly table. Test-period days are dropped unless the lock is open.
+
+    Short gaps are filled after the test days are dropped, so a validation hour is never
+    interpolated from a test-period value while the lock is closed.
+    """
     table = pd.read_parquet(config.HOURLY_PARQUET)
     if include_test:
         config.require_test_unlocked()
-        return table
-    return table[table["delivery_day"] < config.TEST_START].reset_index(drop=True)
+    else:
+        table = table[table["delivery_day"] < config.TEST_START].reset_index(drop=True)
+    return fill_short_gaps(table) if fill_gaps else table
+
+
+# --- Missing values (PLAN.md §2) ----------------------------------------------------------
+MAX_FILL_GAP_HOURS = 2  # gaps of 1-2 hours are interpolated; longer gaps stay missing
+
+
+def gap_lengths(missing):
+    """For each row, the length of the run of missing hours it belongs to (0 if not missing)."""
+    runs = missing.ne(missing.shift()).cumsum()
+    return missing.groupby(runs).transform("sum").where(missing, 0).astype(int)
+
+
+def fill_short_gaps(table, columns=tuple(SERIES)):
+    """Fill gaps of 1-2 hours by linear interpolation in UTC time from the neighbouring hours
+    of the same series. Longer gaps, and gaps at either end of the table, stay NaN.
+
+    This covers the 00:00 hour that SMARD misses for 123, 125 and 411 on 25-hour days.
+    Adds a boolean `<series>_filled` column per series so every filled value can be traced.
+    """
+    table = table.sort_values("ts_utc").reset_index(drop=True)
+    steps = table["ts_utc"].diff().dropna()
+    if not (steps == pd.Timedelta(hours=1)).all():
+        raise ValueError("fill_short_gaps needs a contiguous hourly UTC grid")
+    for name in columns:
+        values = table[name]
+        missing = values.isna()
+        has_both_neighbours = values.ffill().notna() & values.bfill().notna()
+        short = missing & has_both_neighbours & (gap_lengths(missing) <= MAX_FILL_GAP_HOURS)
+        # The grid is evenly spaced in UTC, so interpolating by position is linear in time.
+        interpolated = values.interpolate(method="linear", limit_area="inside")
+        table[name] = values.where(~short, interpolated)
+        table[f"{name}_filled"] = short
+    return table
+
+
+def long_gaps(table, column):
+    """Runs of more than MAX_FILL_GAP_HOURS missing hours: first/last UTC hour and length."""
+    missing = table[column].isna()
+    runs = missing.ne(missing.shift()).cumsum()
+    gaps = table[missing].groupby(runs[missing]).agg(
+        first_utc=("ts_utc", "first"), last_utc=("ts_utc", "last"),
+        first_day=("delivery_day", "first"), last_day=("delivery_day", "last"),
+        hours=("ts_utc", "size"))
+    return gaps[gaps["hours"] > MAX_FILL_GAP_HOURS].reset_index(drop=True)
 
 
 # --- Data-quality report ------------------------------------------------------------------
@@ -333,8 +396,11 @@ def _markdown_table(frame):
     return "\n".join([header, rule, *rows])
 
 
-def _test_period_checks(test):
-    """Format checks on the test period. Returns counts and pass/fail only, never values."""
+def _test_period_checks(test, test_filled):
+    """Format checks on the test period. Returns counts and pass/fail only, never values.
+
+    `test_filled` is the same period after fill_short_gaps; only its NaN counts are used.
+    """
     days = pd.date_range(config.TEST_START, config.TEST_END, freq="D").date
     expected_hours = len(hourly_grid(config.TEST_START, config.TEST_END))
     n_hours = test.groupby("delivery_day")["n_hours"].first()
@@ -346,9 +412,16 @@ def _test_period_checks(test):
         ("2025-10-26 has 25 hours", "", n_hours.get(date(2025, 10, 26)) == 25),
         ("2026-03-29 has 23 hours", "", n_hours.get(date(2026, 3, 29)) == 23),
     ]
+    # Missing hours before and after filling gaps of 1-2 hours (PLAN.md §2). A raw gap that
+    # the rule fills is reported as "filled", not as a failure.
     for name in SERIES:
         n_missing = int(test[name].isna().sum())
-        checks.append((f"Missing hours: {name}", n_missing, n_missing == 0))
+        n_left = int(test_filled[name].isna().sum())
+        checks.append((f"Missing hours: {name} (raw / after filling 1-2 h gaps)", f"{n_missing} / {n_left}",
+                       True if n_missing == 0 else ("filled" if n_left == 0 else False)))
+    days_left = int(test_filled.loc[test_filled[list(SERIES)].isna().any(axis=1), "delivery_day"].nunique())
+    checks.append(("Days with a gap > 2 h after filling (kept; NaN for XGBoost, median for the LSTM)",
+                   days_left, days_left == 0))
     bad_qh = int((test["n_quarter_hours"] != 4).sum())
     checks.append(("Hours without exactly 4 quarter-hour prices", bad_qh, bad_qh == 0))
     out_of_range = int(((test["price"] < PRICE_MIN) | (test["price"] > PRICE_MAX)).sum())
@@ -360,6 +433,62 @@ def _test_period_checks(test):
     checks.append((f"SMARD hourly price differs from quarter-hour mean by > 0.01 EUR/MWh "
                    f"(of {int(both.sum())} hours)", mismatch, mismatch == 0))
     return checks
+
+
+def missing_value_counts(table, first_day, last_day):
+    """Counts for the PLAN.md §2 missing-value rules in one period: hours filled by
+    interpolation, hours still missing (gaps > 2 h), and days with a remaining gap."""
+    window = table[(table["delivery_day"] >= first_day) & (table["delivery_day"] <= last_day)]
+    remaining = window[list(SERIES)].isna()
+    return {
+        "filled_hours": {n: int(window[f"{n}_filled"].sum()) for n in SERIES},
+        "missing_hours": {n: int(remaining[n].sum()) for n in SERIES},
+        "days_with_remaining_gap": int(window.loc[remaining.any(axis=1), "delivery_day"].nunique()),
+        "days": int(window["delivery_day"].nunique()),
+    }
+
+
+def _missing_value_section(pre):
+    """QA lines for the missing-value rules on the training and validation periods."""
+    filled = fill_short_gaps(pre)  # as load_hourly() does: test days excluded
+    lines = [
+        "### Missing values after the PLAN.md §2 rules",
+        "",
+        f"Gaps of 1-{MAX_FILL_GAP_HOURS} hours are filled by linear interpolation in UTC time. "
+        "Training days with a longer gap are dropped; validation and test days are kept (NaN for "
+        "XGBoost, training median for the LSTM).",
+        "",
+    ]
+    gaps_411 = long_gaps(pre, "load_fc")
+    run_in = gaps_411[gaps_411["first_day"] < config.TRAIN_START]
+    later = gaps_411[gaps_411["first_day"] >= config.TRAIN_START]
+    removed = (config.TRAIN_START - config.DATA_START).days
+    lines += [
+        f"- Load forecast 411: {len(gaps_411)} gaps longer than {MAX_FILL_GAP_HOURS} h. "
+        f"{len(run_in)} ({int(run_in['hours'].sum())} h) fall in the run-in from "
+        f"{run_in['first_day'].min()} to {run_in['last_day'].max()}; training starts on "
+        f"{config.TRAIN_START} instead of {config.DATA_START}, which removes {removed} days. "
+        f"The {len(later)} later gaps ({int(later['hours'].sum())} h) are whole days: "
+        + ", ".join(f"{a}" + (f" to {b}" if b != a else "") for a, b in zip(later["first_day"], later["last_day"]))
+        + ".",
+        "",
+    ]
+    rows = []
+    for period, first, last in [("train", config.TRAIN_START, config.TRAIN_END),
+                                ("validation", config.VAL_START, config.VAL_END)]:
+        counts = missing_value_counts(filled, first, last)
+        rows.append({"period": f"{period} ({first} to {last})",
+                     "filled hours": _per_series(counts["filled_hours"]),
+                     "hours still missing": _per_series(counts["missing_hours"]),
+                     "days with a gap > 2 h": f"{counts['days_with_remaining_gap']} of {counts['days']}"})
+    lines += [_markdown_table(pd.DataFrame(rows)), ""]
+    return lines
+
+
+def _per_series(counts):
+    """'name n, ...' for the non-zero counts, or 0."""
+    nonzero = [f"{name} {n}" for name, n in counts.items() if n]
+    return ", ".join(nonzero) if nonzero else "0"
 
 
 def write_qa_report(path=None):
@@ -407,6 +536,7 @@ def write_qa_report(path=None):
         "raw timestamps off the hourly grid": [meta["raw_checks"][n]["off_grid"] for n in SERIES],
     })
     lines += ["### Gaps and duplicates", "", _markdown_table(gaps), ""]
+    lines += _missing_value_section(pre)
 
     price = pre["price"]
     neg = (price < 0).groupby(year).sum()
@@ -437,12 +567,15 @@ def write_qa_report(path=None):
         "| check | count | result |",
         "|---|---|---|",
     ]
-    checks = _test_period_checks(test)
-    lines += [f"| {name} | {count} | {'pass' if ok else 'FAIL'} |" for name, count, ok in checks]
+    filled_all = fill_short_gaps(table)  # counts only; nothing from the test period is shown
+    test_filled = filled_all[filled_all["delivery_day"] >= config.TEST_START]
+    checks = _test_period_checks(test, test_filled)
+    label = {True: "pass", False: "FAIL", "filled": "filled"}
+    lines += [f"| {name} | {count} | {label[ok]} |" for name, count, ok in checks]
     lines += [""]
 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines))
-    n_fail = sum(not ok for _, _, ok in checks)
+    n_fail = sum(ok is False for _, _, ok in checks)
     print(f"Wrote {path.relative_to(config.ROOT)}; test-period checks failing: {n_fail}.")
     return checks

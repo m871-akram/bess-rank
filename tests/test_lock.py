@@ -70,11 +70,11 @@ def test_load_hourly_drops_test_days_until_unlocked(monkeypatch, tmp_path, lock)
     monkeypatch.setattr(config, "LOCK_FILE", lock)
     monkeypatch.delenv("BESS_UNLOCK_TEST", raising=False)
 
-    loaded = data.load_hourly()
+    loaded = data.load_hourly(fill_gaps=False)  # the table is too small to fill gaps
     assert list(loaded["delivery_day"]) == [date(2025, 9, 30)]
     with pytest.raises(config.LockedPeriodError):
-        data.load_hourly(include_test=True)
+        data.load_hourly(include_test=True, fill_gaps=False)
 
     monkeypatch.setenv("BESS_UNLOCK_TEST", "1")
     lock.write_text(COMMIT)
-    assert list(data.load_hourly(include_test=True)["delivery_day"]) == days
+    assert list(data.load_hourly(include_test=True, fill_gaps=False)["delivery_day"]) == days

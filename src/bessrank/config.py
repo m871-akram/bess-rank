@@ -18,7 +18,10 @@ DECISION_HOUR = 11
 
 # --- Periods (delivery days, both ends inclusive) ---------------------------------------
 DATA_START = date(2018, 10, 1)  # every SMARD series used starts here for DE-LU
-TRAIN_START = date(2018, 10, 1)
+# Training starts after the 2018 run-in of the TSO load forecast (411), which has 21 gaps of
+# 1-4 days between 2018-10-02 and 2018-12-31 (PLAN.md §2, §12 2026-10-05). The earlier days
+# still feed the lagged features of January 2019.
+TRAIN_START = date(2019, 1, 1)
 TRAIN_END = date(2024, 9, 30)
 VAL_START = date(2024, 10, 1)
 VAL_END = date(2025, 9, 30)
@@ -53,6 +56,7 @@ RAW_DIR = DATA_DIR / "raw"  # one JSON file per SMARD chunk
 PROCESSED_DIR = DATA_DIR / "processed"
 HOURLY_PARQUET = PROCESSED_DIR / "hourly.parquet"
 HOURLY_META = PROCESSED_DIR / "hourly_meta.json"  # download time, raw duplicate counts
+FEATURES_PARQUET = PROCESSED_DIR / "features.parquet"
 RESULTS_DIR = ROOT / "results"
 PROVENANCE_JSON = RESULTS_DIR / "provenance.json"
 LOCK_FILE = ROOT / "PREREGISTRATION.lock"

@@ -76,7 +76,7 @@ Neighbour prices (FR 254, NL 256, AT 4170) are optional; add them only if Day 1 
 - Forecast residual load = 411 − (wind + PV). Check once that it equals 4362.
 
 **Periods**
-- **Train:** 2018-10-01 → 2024-09-30.
+- **Train:** 2019-01-01 → 2024-09-30. Data from 2018-10-01 feed only the lagged features (start moved by the missing-value rules below).
 - **Validation:** 2024-10-01 → 2025-09-30.
 - **Test (locked):** 2025-10-01 → 2026-09-30.
 
@@ -86,8 +86,15 @@ Neighbour prices (FR 254, NL 256, AT 4170) are optional; add them only if Day 1 
 
 **Persistence.** Cloud VMs are fresh each session. `python -m bessrank.run data`:
 1. pulls `processed/hourly.parquet` from the Databricks volume if it is reachable;
-2. otherwise downloads from SMARD (at most 4 concurrent requests, retries with backoff, about 3,000 requests) and builds the parquet;
+2. otherwise downloads from SMARD (at most 4 concurrent requests and about 10 requests/s, retries with backoff, about 3,000 requests) and builds the parquet;
 3. then uploads the parquet to the volume when the API works.
+
+**Missing values** (decided by Akram, 2026-10-05)
+- Gaps of 1–2 hours in any series: linear interpolation in UTC time from the neighbouring hours of the same series. This covers the 00:00 hour that SMARD misses on 25-hour days (123, 125, 411), including 2025-10-26. Every filled value is flagged.
+- The training start moves to the first day after the 2018 run-in of the load forecast 411 (21 gaps of 1–4 days, 2018-10-02 to 2018-12-31): 2019-01-01.
+- Any later training day with a gap longer than 2 hours in a feature series is dropped from training.
+- Validation and test days are never dropped. XGBoost gets NaN (native missing-value handling); the LSTM gets the training-window median for that hour.
+- The counts are in `results/qa_data.md` and `results/features_summary.json` (test period: counts only).
 
 **Data quality report** (`results/qa_data.md`)
 - Coverage, gaps and duplicates per series and year; DST days.
@@ -305,7 +312,7 @@ Anything decided after the lock is a dated amendment in §12 and is labelled exp
 
 ```
 bess-rank/
-  CLAUDE.md  PLAN.md  README.md  VALIDATION.md  requirements.txt  .gitignore  .claude/settings.json
+  CLAUDE.md  PLAN.md  README.md  VALIDATION.md  requirements.txt  pyproject.toml  .gitignore  .claude/settings.json
   src/bessrank/
     config.py      dates, battery parameters, paths, test lock
     data.py        SMARD download, Databricks cache, hourly table, QA report

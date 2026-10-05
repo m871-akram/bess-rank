@@ -41,7 +41,7 @@ def test_neighbouring_days_have_24_hours():
 def test_grid_is_utc_and_hourly_across_dst():
     t = day_table(date(2024, 3, 25), date(2024, 11, 3))
     assert str(t.index.tz) == "UTC"
-    assert (np.diff(t.index.asi8) == 3_600_000_000_000).all()  # exactly one hour apart
+    assert (t.index[1:] - t.index[:-1] == pd.Timedelta(hours=1)).all()  # exactly one hour apart
     sizes = t.groupby("delivery_day").size()
     assert sizes[date(2024, 3, 31)] == 23 and sizes[date(2024, 10, 27)] == 25
     assert set(sizes.drop([date(2024, 3, 31), date(2024, 10, 27)])) == {24}
